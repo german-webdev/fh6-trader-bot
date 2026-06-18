@@ -70,6 +70,9 @@ class BotRuntime:
     def _search_confirm_phase_grace_seconds(self) -> float:
         return 1.2
 
+    def _search_menu_return_grace_seconds(self) -> float:
+        return 0.8
+
     def _lot_open_phase_grace_seconds(self) -> float:
         return 1.2
 
@@ -468,12 +471,10 @@ class BotRuntime:
                         search_phase_started_at + self._search_phase_grace_seconds()
                     )
                 elif screen is ScreenName.S3B_LIST_EMPTY and decision.actions == ("esc",):
-                    time.sleep(0.35)
-                    self.input.press_enter()
-                    search_confirm_phase_started_at = time.monotonic()
+                    search_phase_started_at = None
+                    search_confirm_phase_started_at = None
                     unknown_grace_until = (
-                        search_confirm_phase_started_at
-                        + self._search_confirm_phase_grace_seconds()
+                        time.monotonic() + self._search_menu_return_grace_seconds()
                     )
                 elif self._is_search_sequence(decision.actions):
                     search_phase_started_at = time.monotonic()
