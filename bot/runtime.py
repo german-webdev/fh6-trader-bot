@@ -95,7 +95,6 @@ class BotRuntime:
         cycles = 0
         unknown_count = 0
         purchase_unknown_count = 0
-        final_success_count = 0
         start_screen_count = 0
         bootstrapped = False
         last_wait_log = ""
@@ -247,9 +246,9 @@ class BotRuntime:
                     else (time.monotonic() - purchase_result_started_at)
                 )
                 if purchase_result_elapsed >= 0.9:
-                    if s7_score >= 0.76 and (candidate_score - s7_score) <= 0.06:
+                    if s7_score >= 0.75 and (candidate_score - s7_score) <= 0.08:
                         screen = ScreenName.S7_BUY_SUCCESS
-                    elif s8_score >= 0.77 and (candidate_score - s8_score) <= 0.08:
+                    elif s8_score >= 0.77 and (candidate_score - s8_score) <= 0.09:
                         screen = ScreenName.S8_FINAL_SUCCESS
 
                 if (
@@ -267,11 +266,6 @@ class BotRuntime:
                 ScreenName.S8_FINAL_SUCCESS,
             }:
                 buyout_confirm_phase_started_at = None
-
-            if screen is ScreenName.S8_FINAL_SUCCESS:
-                final_success_count += 1
-            else:
-                final_success_count = 0
 
             if not bootstrapped:
                 start_ready = screen is ScreenName.S1_SEARCH_MENU or (
@@ -395,21 +389,6 @@ class BotRuntime:
                 continue
 
             decision = machine.handle(screen)
-            if (
-                screen is ScreenName.S8_FINAL_SUCCESS
-                and final_success_count < self.config.detector.success_confirmations
-            ):
-                self.logger.info(
-                    "screen=%s score=%.4f margin=%.4f status=confirm actions= message=Waiting for repeated final success confirmation (%s/%s)",
-                    screen.value,
-                    detection.score,
-                    detection.margin,
-                    final_success_count,
-                    self.config.detector.success_confirmations,
-                )
-                time.sleep(self.config.timings.detect_interval_ms / 1000.0)
-                continue
-
             self.logger.info(
                 "screen=%s score=%.4f margin=%.4f status=%s actions=%s message=%s",
                 screen.value,
