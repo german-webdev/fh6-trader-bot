@@ -52,6 +52,13 @@ class BotRuntime:
             return None, None
         return window, capture_window(window)
 
+    def _best_candidate(
+        self,
+        scores: dict[str, float],
+    ) -> tuple[ScreenName, float]:
+        best_screen_value, best_score = max(scores.items(), key=lambda item: item[1])
+        return ScreenName(best_screen_value), best_score
+
     def run(self, dry_run: bool = False) -> dict[str, Any]:
         window = find_window(self.config.window.title_contains)
         if window is None:
@@ -133,6 +140,7 @@ class BotRuntime:
             last_wait_log = ""
             detection = self.detector.detect(image)
             screen = detection.screen
+            candidate_screen, candidate_score = self._best_candidate(detection.scores)
 
             if screen is ScreenName.S8_FINAL_SUCCESS:
                 final_success_count += 1
@@ -140,20 +148,31 @@ class BotRuntime:
                 final_success_count = 0
 
             if not bootstrapped:
-                if screen is ScreenName.S1_SEARCH_MENU:
+                start_ready = screen is ScreenName.S1_SEARCH_MENU or (
+                    candidate_screen is ScreenName.S1_SEARCH_MENU
+                    and candidate_score >= self.config.detector.match_threshold
+                )
+
+                if start_ready:
                     start_screen_count += 1
                 else:
                     start_screen_count = 0
 
                 if start_screen_count >= self.config.detector.start_confirmations:
                     bootstrapped = True
-                    self.logger.info("Start screen confirmed, enabling actions")
+                    self.logger.info(
+                        "Start screen confirmed, enabling actions (candidate=%s score=%.4f)",
+                        candidate_screen.value,
+                        candidate_score,
+                    )
                 else:
                     self.logger.info(
-                        "screen=%s score=%.4f margin=%.4f status=bootstrap actions= message=Waiting for confirmed S1 start screen (%s/%s)",
+                        "screen=%s score=%.4f margin=%.4f candidate=%s candidate_score=%.4f status=bootstrap actions= message=Waiting for confirmed S1 start screen (%s/%s)",
                         screen.value,
                         detection.score,
                         detection.margin,
+                        candidate_screen.value,
+                        candidate_score,
                         start_screen_count,
                         self.config.detector.start_confirmations,
                     )
