@@ -5,8 +5,9 @@ from importlib import resources
 from pathlib import Path
 from typing import Literal
 
+import cv2
 import numpy as np
-from PIL import Image, ImageFilter, ImageOps
+from PIL import Image
 
 from bot.config import AppConfig
 from bot.screens import ScreenName
@@ -46,12 +47,18 @@ class DetectionResult:
 
 
 @dataclass(slots=True)
-class PreparedCrop:
-    size: tuple[int, int]
-    rgb: np.ndarray
+class PreparedVariants:
+    color: np.ndarray
     gray: np.ndarray
     edges: np.ndarray
     binary: np.ndarray
+
+
+@dataclass(slots=True)
+class PreparedTrigger:
+    trigger: ScreenTrigger
+    template_size: tuple[int, int]
+    variants: PreparedVariants
 
 
 PROFILES: tuple[ScreenProfile, ...] = (
@@ -82,21 +89,21 @@ PROFILES: tuple[ScreenProfile, ...] = (
             ScreenTrigger(
                 (0.288, 0.235, 0.715, 0.360),
                 weight=1.7,
-                min_score=0.89,
+                min_score=0.88,
                 mode="accent",
                 search_radius=0.060,
             ),
             ScreenTrigger(
                 (0.280, 0.640, 0.720, 0.780),
                 weight=2.3,
-                min_score=0.89,
+                min_score=0.80,
                 mode="accent",
                 search_radius=0.120,
             ),
             ScreenTrigger(
                 (0.300, 0.410, 0.505, 0.690),
                 weight=1.0,
-                min_score=0.84,
+                min_score=0.70,
                 mode="text",
                 search_radius=0.050,
             ),
@@ -207,13 +214,37 @@ def _resource_dir() -> Path:
     return Path(resources.files("bot").joinpath("resources", "reference"))
 
 
-def _crop_region(image: Image.Image, region: Region) -> Image.Image:
-    width, height = image.size
-    left = int(width * region[0])
-    top = int(height * region[1])
-    right = int(width * region[2])
-    bottom = int(height * region[3])
-    return image.crop((left, top, right, bottom))
+def _pil_to_bgr(image: Image.Image) -> np.ndarray:
+    rgb = np.asarray(image.convert("RGB"))
+    return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+
+
+def _region_bounds(width: int, height: int, region: Region) -> tuple[int, int, int, int]:
+    left = int(round(width * region[0]))
+    top = int(round(height * region[1]))
+    right = int(round(width * region[2]))
+    bottom = int(round(height * region[3]))
+    right = max(left + 1, right)
+    bottom = max(top + 1, bottom)
+    return (left, top, right, bottom)
+
+
+def _crop_region(image: np.ndarray, region: Region) -> np.ndarray:
+    height, width = image.shape[:2]
+    left, top, right, bottom = _region_bounds(width, height, region)
+    return image[top:bottom, left:right]
+
+
+def _expand_region(region: Region, radius: float) -> Region:
+    if radius <= 0.0:
+        return region
+
+    return (
+        max(0.0, region[0] - radius),
+        max(0.0, region[1] - radius),
+        min(1.0, region[2] + radius),
+        min(1.0, region[3] + radius),
+    )
 
 
 def _shift_region(region: Region, delta_x: float, delta_y: float) -> Region:
@@ -224,112 +255,108 @@ def _shift_region(region: Region, delta_x: float, delta_y: float) -> Region:
     return (left, top, left + width, top + height)
 
 
-def _fit_size(size: tuple[int, int]) -> tuple[int, int]:
-    width, height = size
+def _template_scale(width: int, height: int) -> float:
     max_width = 384
     max_height = 216
-    scale = min(max_width / width, max_height / height, 1.0)
-    fitted_width = max(64, int(width * scale))
-    fitted_height = max(32, int(height * scale))
-    return (fitted_width, fitted_height)
+    return min(max_width / width, max_height / height, 1.0)
 
 
-def _grayscale_image(image: Image.Image, size: tuple[int, int]) -> Image.Image:
-    return ImageOps.autocontrast(
-        image.convert("L").resize(size, Image.Resampling.BILINEAR)
+def _scaled_size(width: int, height: int, scale: float) -> tuple[int, int]:
+    scaled_width = max(48, int(round(width * scale)))
+    scaled_height = max(24, int(round(height * scale)))
+    return (scaled_width, scaled_height)
+
+
+def _resize(image: np.ndarray, size: tuple[int, int]) -> np.ndarray:
+    interpolation = cv2.INTER_AREA
+    if image.shape[1] < size[0] or image.shape[0] < size[1]:
+        interpolation = cv2.INTER_LINEAR
+    return cv2.resize(image, size, interpolation=interpolation)
+
+
+def _normalize_color(image: np.ndarray) -> np.ndarray:
+    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+    l_channel, a_channel, b_channel = cv2.split(lab)
+    l_channel = cv2.equalizeHist(l_channel)
+    normalized = cv2.merge((l_channel, a_channel, b_channel))
+    return normalized
+
+
+def _gray(image: np.ndarray) -> np.ndarray:
+    grayscale = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    return cv2.equalizeHist(grayscale)
+
+
+def _binary(gray: np.ndarray) -> np.ndarray:
+    _threshold, binary = cv2.threshold(
+        gray,
+        0,
+        255,
+        cv2.THRESH_BINARY + cv2.THRESH_OTSU,
     )
+    return binary
 
 
-def _rgb_array(image: Image.Image, size: tuple[int, int]) -> np.ndarray:
-    prepared = image.convert("RGB").resize(size, Image.Resampling.BILINEAR)
-    return np.asarray(prepared, dtype=np.float32)
+def _edges(gray: np.ndarray) -> np.ndarray:
+    return cv2.Canny(gray, 60, 160)
 
 
-def _gray_array(image: Image.Image, size: tuple[int, int]) -> np.ndarray:
-    return np.asarray(_grayscale_image(image, size), dtype=np.float32)
-
-
-def _edge_array(image: Image.Image, size: tuple[int, int]) -> np.ndarray:
-    prepared = _grayscale_image(image, size).filter(ImageFilter.FIND_EDGES)
-    return np.asarray(prepared, dtype=np.float32)
-
-
-def _otsu_threshold(array: np.ndarray) -> int:
-    pixels = array.astype(np.uint8).reshape(-1)
-    if pixels.size == 0:
-        return 127
-
-    histogram = np.bincount(pixels, minlength=256).astype(np.float64)
-    total = histogram.sum()
-    cumulative_weight = np.cumsum(histogram)
-    cumulative_mean = np.cumsum(histogram * np.arange(256, dtype=np.float64))
-    global_mean = cumulative_mean[-1]
-
-    denominator = cumulative_weight * (total - cumulative_weight)
-    numerator = (global_mean * cumulative_weight - cumulative_mean) ** 2
-    with np.errstate(divide="ignore", invalid="ignore"):
-        variance = np.where(denominator > 0, numerator / denominator, 0.0)
-
-    threshold = int(np.argmax(variance))
-    return max(96, min(192, threshold))
-
-
-def _binary_array(image: Image.Image, size: tuple[int, int]) -> np.ndarray:
-    grayscale = _gray_array(image, size)
-    threshold = _otsu_threshold(grayscale)
-    return np.where(grayscale >= threshold, 255.0, 0.0)
-
-
-def _prepare_crop(
-    image: Image.Image,
-    *,
-    size: tuple[int, int] | None = None,
-) -> PreparedCrop:
-    prepared_size = _fit_size(image.size) if size is None else size
-    return PreparedCrop(
-        size=prepared_size,
-        rgb=_rgb_array(image, prepared_size),
-        gray=_gray_array(image, prepared_size),
-        edges=_edge_array(image, prepared_size),
-        binary=_binary_array(image, prepared_size),
+def _prepare_variants(
+    image: np.ndarray,
+    size: tuple[int, int],
+) -> PreparedVariants:
+    resized = _resize(image, size)
+    gray = _gray(resized)
+    return PreparedVariants(
+        color=_normalize_color(resized),
+        gray=gray,
+        edges=_edges(gray),
+        binary=_binary(gray),
     )
 
 
 def _mean_similarity(current: np.ndarray, reference: np.ndarray) -> float:
-    score = 1.0 - (np.abs(current - reference).mean() / 255.0)
-    return max(0.0, min(1.0, float(score)))
-
-
-def _binary_similarity(current: np.ndarray, reference: np.ndarray) -> float:
-    current_mask = current >= 128.0
-    reference_mask = reference >= 128.0
-    score = float((current_mask == reference_mask).mean())
+    difference = cv2.absdiff(current, reference)
+    if difference.ndim == 3:
+        score = 1.0 - (float(difference.mean()) / 255.0)
+    else:
+        score = 1.0 - (float(np.mean(difference)) / 255.0)
     return max(0.0, min(1.0, score))
 
 
 def _similarity(
-    current: PreparedCrop,
-    reference: PreparedCrop,
+    current: PreparedVariants,
+    template: PreparedVariants,
     mode: MatchMode,
 ) -> float:
-    edge_score = _mean_similarity(current.edges, reference.edges)
-    binary_score = _binary_similarity(current.binary, reference.binary)
+    edge_score = _mean_similarity(current.edges, template.edges)
+    binary_score = _mean_similarity(current.binary, template.binary)
 
     if mode == "text":
-        score = (binary_score * 0.65) + (edge_score * 0.35)
-        return max(0.0, min(1.0, float(score)))
+        return max(0.0, min(1.0, (binary_score * 0.65) + (edge_score * 0.35)))
 
-    rgb_score = _mean_similarity(current.rgb, reference.rgb)
-    gray_score = _mean_similarity(current.gray, reference.gray)
+    color_score = _mean_similarity(current.color, template.color)
+    gray_score = _mean_similarity(current.gray, template.gray)
 
     if mode == "accent":
-        score = (rgb_score * 0.40) + (binary_score * 0.25) + (edge_score * 0.35)
-        return max(0.0, min(1.0, float(score)))
+        return max(
+            0.0,
+            min(
+                1.0,
+                (color_score * 0.45) + (binary_score * 0.20) + (edge_score * 0.35),
+            ),
+        )
 
-    score = (gray_score * 0.25) + (rgb_score * 0.20) + (edge_score * 0.40) + (
-        binary_score * 0.15
+    return max(
+        0.0,
+        min(
+            1.0,
+            (gray_score * 0.25)
+            + (color_score * 0.20)
+            + (edge_score * 0.40)
+            + (binary_score * 0.15),
+        ),
     )
-    return max(0.0, min(1.0, float(score)))
 
 
 class ScreenDetector:
@@ -337,16 +364,38 @@ class ScreenDetector:
         self.config = config
         base_dir = _resource_dir()
         self.templates = {
-            profile.screen: Image.open(base_dir / profile.filename).convert("RGB")
-            for profile in PROFILES
-        }
-        self.reference_crops = {
-            profile.screen: tuple(
-                _prepare_crop(_crop_region(self.templates[profile.screen], trigger.region))
-                for trigger in profile.triggers
+            profile.screen: _pil_to_bgr(
+                Image.open(base_dir / profile.filename).convert("RGB")
             )
             for profile in PROFILES
         }
+        self.prepared_triggers = {
+            profile.screen: self._prepare_profile(profile)
+            for profile in PROFILES
+        }
+
+    def _prepare_profile(self, profile: ScreenProfile) -> tuple[PreparedTrigger, ...]:
+        template = self.templates[profile.screen]
+        prepared: list[PreparedTrigger] = []
+
+        for trigger in profile.triggers:
+            template_crop = _crop_region(template, trigger.region)
+            scale = _template_scale(template_crop.shape[1], template_crop.shape[0])
+            template_size = _scaled_size(
+                template_crop.shape[1],
+                template_crop.shape[0],
+                scale,
+            )
+
+            prepared.append(
+                PreparedTrigger(
+                    trigger=trigger,
+                    template_size=template_size,
+                    variants=_prepare_variants(template_crop, template_size),
+                )
+            )
+
+        return tuple(prepared)
 
     def _screen_threshold(self, screen: ScreenName) -> float:
         if screen is ScreenName.S6_LOADER:
@@ -355,7 +404,7 @@ class ScreenDetector:
 
     def _score_profile(
         self,
-        image: Image.Image,
+        image: np.ndarray,
         profile: ScreenProfile,
     ) -> tuple[float, bool]:
         total_weight = 0.0
@@ -363,8 +412,8 @@ class ScreenDetector:
         minimum_trigger_score = 1.0
         all_required_triggers_matched = True
 
-        for index, trigger in enumerate(profile.triggers):
-            reference_crop = self.reference_crops[profile.screen][index]
+        for prepared_trigger in self.prepared_triggers[profile.screen]:
+            trigger = prepared_trigger.trigger
             trigger_score = 0.0
             search_offsets = (0.0,)
             if trigger.search_radius > 0.0:
@@ -376,16 +425,17 @@ class ScreenDetector:
 
             for delta_y in search_offsets:
                 for delta_x in search_offsets:
-                    current_crop = _prepare_crop(
-                        _crop_region(
-                            image,
-                            _shift_region(trigger.region, delta_x, delta_y),
-                        ),
-                        size=reference_crop.size,
+                    current_crop = _crop_region(
+                        image,
+                        _shift_region(trigger.region, delta_x, delta_y),
+                    )
+                    current_variants = _prepare_variants(
+                        current_crop,
+                        prepared_trigger.template_size,
                     )
                     candidate_score = _similarity(
-                        current_crop,
-                        reference_crop,
+                        current_variants,
+                        prepared_trigger.variants,
                         trigger.mode,
                     )
                     trigger_score = max(trigger_score, candidate_score)
@@ -407,11 +457,12 @@ class ScreenDetector:
         return (float(effective_score), all_required_triggers_matched)
 
     def detect(self, image: Image.Image) -> DetectionResult:
+        image_bgr = _pil_to_bgr(image)
         profile_scores: dict[str, float] = {}
         profile_matches: dict[str, bool] = {}
 
         for profile in PROFILES:
-            score, matched = self._score_profile(image, profile)
+            score, matched = self._score_profile(image_bgr, profile)
             profile_scores[profile.screen.value] = score
             profile_matches[profile.screen.value] = matched
 

@@ -2,6 +2,8 @@
 
 Desktop bot for Windows that automates the in-game auction loop by recognizing game screens and sending keyboard input for search, lot opening, buyout confirmation, and retry flow recovery.
 
+Screen recognition is implemented with OpenCV-based trigger matching over stable UI regions instead of whole-screen comparison.
+
 ## Features
 
 - detects auction states from focused UI triggers instead of the whole screen;
@@ -34,6 +36,7 @@ python -m bot check-window
 
 - Windows 11
 - Python 3.12+
+- OpenCV runtime from `requirements.txt`
 - Russian in-game interface
 - 1920x1080 or 2560x1440 resolution
 - stable UI scale

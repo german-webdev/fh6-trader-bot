@@ -1,14 +1,19 @@
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import (
+    collect_data_files,
+    collect_dynamic_libs,
+    collect_submodules,
+)
 
 
 datas = collect_data_files("bot")
-hiddenimports = collect_submodules("PIL")
+hiddenimports = collect_submodules("PIL") + collect_submodules("cv2")
+binaries = collect_dynamic_libs("cv2")
 
 
 a = Analysis(
     ["bot/__main__.py"],
     pathex=["."],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
