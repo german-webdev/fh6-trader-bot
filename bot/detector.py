@@ -116,7 +116,7 @@ PROFILES: tuple[ScreenProfile, ...] = (
             ScreenTrigger(
                 (0.040, 0.145, 0.305, 0.255),
                 weight=1.0,
-                min_score=0.89,
+                min_score=0.84,
                 mode="text",
                 search_radius=0.022,
             ),
@@ -137,7 +137,7 @@ PROFILES: tuple[ScreenProfile, ...] = (
             ScreenTrigger(
                 (0.735, 0.790, 0.940, 0.895),
                 weight=2.0,
-                min_score=0.89,
+                min_score=0.84,
                 mode="text",
                 search_radius=0.018,
             ),

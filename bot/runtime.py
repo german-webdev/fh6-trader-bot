@@ -237,6 +237,19 @@ class BotRuntime:
                 search_menu_return_started_at = None
 
             if (
+                screen is ScreenName.S1_SEARCH_MENU
+                and search_confirm_phase_started_at is not None
+            ):
+                self.logger.info(
+                    "screen=%s score=%.4f margin=%.4f status=wait actions= message=Search menu still visible after enter, waiting for confirmation screen.",
+                    screen.value,
+                    detection.score,
+                    detection.margin,
+                )
+                time.sleep(self.config.timings.detect_interval_ms / 1000.0)
+                continue
+
+            if (
                 screen is ScreenName.UNKNOWN
                 and search_menu_return_started_at is not None
                 and (time.monotonic() - search_menu_return_started_at)

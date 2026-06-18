@@ -77,6 +77,18 @@ class DetectorTests(unittest.TestCase):
         self.assertGreaterEqual(s1_score, 0.78)
         self.assertLessEqual(best_score - s1_score, 0.10)
 
+    def test_runtime_single_lot_frame_stays_within_s3a_remap_window(self) -> None:
+        screenshots_root = Path(r"C:\Users\musiq\OneDrive")
+        screenshot_path = next(
+            path for path in screenshots_root.rglob("*.png") if "030718" in path.name
+        )
+        detection = self._detect(screenshot_path)
+        s3a_score = detection.scores[ScreenName.S3A_LIST_PRESENT.value]
+        best_score = max(detection.scores.values())
+
+        self.assertGreaterEqual(s3a_score, 0.82)
+        self.assertLessEqual(best_score - s3a_score, 0.03)
+
 
 if __name__ == "__main__":
     unittest.main()
