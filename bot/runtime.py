@@ -59,6 +59,16 @@ class BotRuntime:
         best_screen_value, best_score = max(scores.items(), key=lambda item: item[1])
         return ScreenName(best_screen_value), best_score
 
+    def _is_search_sequence(self, actions: tuple[str, ...]) -> bool:
+        return actions in {
+            ("enter", "enter"),
+            ("esc", "enter", "enter"),
+            ("enter", "esc", "esc", "enter", "enter"),
+        }
+
+    def _search_phase_grace_seconds(self) -> float:
+        return 2.4
+
     def run(self, dry_run: bool = False) -> dict[str, Any]:
         window = find_window(self.config.window.title_contains)
         if window is None:
@@ -82,6 +92,8 @@ class BotRuntime:
         last_wait_log = ""
         start_time = time.monotonic()
         loader_started_at: float | None = None
+        unknown_grace_until = 0.0
+        search_phase_started_at: float | None = None
         self.logger.info("Runtime started")
         time.sleep(self.config.timings.startup_delay_ms / 1000.0)
 
@@ -148,12 +160,36 @@ class BotRuntime:
                 )
                 if not dry_run:
                     self._execute_actions(("enter", "enter"))
+                search_phase_started_at = time.monotonic()
+                unknown_grace_until = (
+                    search_phase_started_at + self._search_phase_grace_seconds()
+                )
                 time.sleep(self.config.timings.detect_interval_ms / 1000.0)
                 continue
 
             detection = self.detector.detect(image)
             screen = detection.screen
             candidate_screen, candidate_score = self._best_candidate(detection.scores)
+            s3a_score = detection.scores.get(ScreenName.S3A_LIST_PRESENT.value, 0.0)
+            s3b_score = detection.scores.get(ScreenName.S3B_LIST_EMPTY.value, 0.0)
+
+            if (
+                screen is ScreenName.UNKNOWN
+                and search_phase_started_at is not None
+                and (time.monotonic() - search_phase_started_at)
+                >= self._search_phase_grace_seconds()
+            ):
+                if s3a_score >= 0.70 and (candidate_score - s3a_score) <= 0.03:
+                    screen = ScreenName.S3A_LIST_PRESENT
+                elif s3b_score >= 0.72 and (candidate_score - s3b_score) <= 0.03:
+                    screen = ScreenName.S3B_LIST_EMPTY
+
+            if screen in {
+                ScreenName.S3A_LIST_PRESENT,
+                ScreenName.S3B_LIST_EMPTY,
+                ScreenName.S4_LOT_DETAILS,
+            }:
+                search_phase_started_at = None
 
             if screen is ScreenName.S8_FINAL_SUCCESS:
                 final_success_count += 1
@@ -196,9 +232,11 @@ class BotRuntime:
                 cycles += 1
 
             if screen is ScreenName.UNKNOWN:
-                unknown_count += 1
-                if machine.awaiting_purchase_result:
-                    purchase_unknown_count += 1
+                in_unknown_grace = time.monotonic() < unknown_grace_until
+                if not in_unknown_grace:
+                    unknown_count += 1
+                    if machine.awaiting_purchase_result:
+                        purchase_unknown_count += 1
                 if self.config.debug.save_unknown_frames:
                     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
                     save_image(
@@ -236,6 +274,10 @@ class BotRuntime:
                         else ("enter", "esc", "esc")
                     )
                 )
+                search_phase_started_at = time.monotonic()
+                unknown_grace_until = (
+                    search_phase_started_at + self._search_phase_grace_seconds()
+                )
                 purchase_unknown_count = 0
                 time.sleep(self.config.timings.detect_interval_ms / 1000.0)
                 continue
@@ -252,6 +294,10 @@ class BotRuntime:
                         if self.config.flow.fast_restart_search
                         else ("enter", "esc", "esc")
                     )
+                )
+                search_phase_started_at = time.monotonic()
+                unknown_grace_until = (
+                    search_phase_started_at + self._search_phase_grace_seconds()
                 )
                 loader_started_at = None
                 time.sleep(self.config.timings.detect_interval_ms / 1000.0)
@@ -299,6 +345,11 @@ class BotRuntime:
 
             if not dry_run:
                 self._execute_actions(decision.actions)
+                if self._is_search_sequence(decision.actions):
+                    search_phase_started_at = time.monotonic()
+                    unknown_grace_until = (
+                        search_phase_started_at + self._search_phase_grace_seconds()
+                    )
 
             time.sleep(self.config.timings.detect_interval_ms / 1000.0)
 

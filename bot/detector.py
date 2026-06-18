@@ -64,8 +64,10 @@ PROFILES: tuple[ScreenProfile, ...] = (
         filename="3-1. Лот присутствует.png",
         triggers=(
             ScreenTrigger((0.03, 0.10, 0.27, 0.18), weight=1.0, min_score=0.88),
-            ScreenTrigger((0.52, 0.11, 0.95, 0.19), weight=1.5, min_score=0.88),
-            ScreenTrigger((0.70, 0.70, 0.83, 0.82), weight=1.8, min_score=0.88),
+            ScreenTrigger((0.51, 0.11, 0.98, 0.20), weight=1.5, min_score=0.88),
+            ScreenTrigger((0.54, 0.69, 0.70, 0.82), weight=1.2, min_score=0.84),
+            ScreenTrigger((0.54, 0.80, 0.74, 0.92), weight=1.5, min_score=0.84),
+            ScreenTrigger((0.79, 0.80, 0.97, 0.92), weight=1.8, min_score=0.84),
         ),
     ),
     ScreenProfile(
