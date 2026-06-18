@@ -66,6 +66,29 @@ class BotRuntime:
             ("enter", "esc", "esc", "enter", "enter"),
         }
 
+    def _execute_search_open_sequence(self) -> None:
+        # S1 and S2 are deterministic, so we can drive through them blindly
+        # and only rely on recognition once the auction results screen appears.
+        self.input.press_enter()
+        self.input.press_enter()
+        self.input.press_enter()
+
+    def _execute_flow_actions(self, actions: tuple[str, ...]) -> None:
+        if actions == ("enter", "enter"):
+            self._execute_search_open_sequence()
+            return
+        if actions == ("esc", "enter", "enter"):
+            self.input.press_escape()
+            self._execute_search_open_sequence()
+            return
+        if actions == ("enter", "esc", "esc", "enter", "enter"):
+            self.input.press_enter()
+            self.input.press_escape()
+            self.input.press_escape()
+            self._execute_search_open_sequence()
+            return
+        self._execute_actions(actions)
+
     def _search_phase_grace_seconds(self) -> float:
         return 1.4
 
@@ -170,7 +193,7 @@ class BotRuntime:
                     "Trusted S1 start enabled, sending immediate search sequence."
                 )
                 if not dry_run:
-                    self._execute_actions(("enter", "enter"))
+                    self._execute_search_open_sequence()
                 search_phase_started_at = time.monotonic()
                 unknown_grace_until = (
                     search_phase_started_at + self._search_phase_grace_seconds()
@@ -437,7 +460,7 @@ class BotRuntime:
                 )
 
             if not dry_run:
-                self._execute_actions(decision.actions)
+                self._execute_flow_actions(decision.actions)
                 if self._is_search_sequence(decision.actions):
                     search_phase_started_at = time.monotonic()
                     unknown_grace_until = (
