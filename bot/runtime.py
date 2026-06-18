@@ -71,6 +71,10 @@ class BotRuntime:
         # and only rely on recognition once the auction results screen appears.
         self.input.press_enter()
         self.input.press_enter()
+        # The search-confirm screen appears with a short transition; without a
+        # tiny settle time the last Enter can land too early and get ignored.
+        time.sleep(0.28)
+        self.input.press_enter()
 
     def _execute_empty_list_restart_sequence(self) -> None:
         self.input.press_escape()
