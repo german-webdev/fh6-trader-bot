@@ -30,3 +30,7 @@ start_confirmations = 2
 save_unknown_frames = true
 show_detector_scores = true
 output_dir = "debug_frames"
+
+[flow]
+trusted_start_search = true
+fast_restart_search = true

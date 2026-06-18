@@ -49,12 +49,19 @@ class DebugConfig:
 
 
 @dataclass(slots=True)
+class FlowConfig:
+    trusted_start_search: bool
+    fast_restart_search: bool
+
+
+@dataclass(slots=True)
 class AppConfig:
     window: WindowConfig
     controls: ControlConfig
     timings: TimingConfig
     detector: DetectorConfig
     debug: DebugConfig
+    flow: FlowConfig
 
 
 def load_config(config_path: str | Path) -> AppConfig:
@@ -67,4 +74,5 @@ def load_config(config_path: str | Path) -> AppConfig:
         timings=TimingConfig(**raw["timings"]),
         detector=DetectorConfig(**raw["detector"]),
         debug=DebugConfig(**raw["debug"]),
+        flow=FlowConfig(**raw["flow"]),
     )

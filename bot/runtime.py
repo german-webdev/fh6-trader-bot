@@ -67,7 +67,9 @@ class BotRuntime:
                 "message": "Game window was not found.",
             }
 
-        machine = AuctionStateMachine()
+        machine = AuctionStateMachine(
+            fast_restart_search=self.config.flow.fast_restart_search
+        )
         self.input.dry_run = dry_run
         paused = False
         started = False
@@ -138,6 +140,17 @@ class BotRuntime:
                 continue
 
             last_wait_log = ""
+
+            if not bootstrapped and self.config.flow.trusted_start_search:
+                bootstrapped = True
+                self.logger.info(
+                    "Trusted S1 start enabled, sending immediate search sequence."
+                )
+                if not dry_run:
+                    self._execute_actions(("enter", "enter"))
+                time.sleep(self.config.timings.detect_interval_ms / 1000.0)
+                continue
+
             detection = self.detector.detect(image)
             screen = detection.screen
             candidate_screen, candidate_score = self._best_candidate(detection.scores)
@@ -216,7 +229,13 @@ class BotRuntime:
                 self.logger.warning(
                     "Unknown post-loader result detected, running recovery sequence"
                 )
-                self._execute_actions(("enter", "esc", "esc"))
+                self._execute_actions(
+                    (
+                        ("enter", "esc", "esc", "enter", "enter")
+                        if self.config.flow.fast_restart_search
+                        else ("enter", "esc", "esc")
+                    )
+                )
                 purchase_unknown_count = 0
                 time.sleep(self.config.timings.detect_interval_ms / 1000.0)
                 continue
@@ -227,7 +246,13 @@ class BotRuntime:
                 >= self.config.timings.purchase_timeout_ms
             ):
                 self.logger.warning("Loader timed out, running recovery sequence")
-                self._execute_actions(("enter", "esc", "esc"))
+                self._execute_actions(
+                    (
+                        ("enter", "esc", "esc", "enter", "enter")
+                        if self.config.flow.fast_restart_search
+                        else ("enter", "esc", "esc")
+                    )
+                )
                 loader_started_at = None
                 time.sleep(self.config.timings.detect_interval_ms / 1000.0)
                 continue

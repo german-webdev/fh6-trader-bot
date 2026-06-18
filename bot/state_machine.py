@@ -14,9 +14,10 @@ class StepDecision:
 
 
 class AuctionStateMachine:
-    def __init__(self) -> None:
+    def __init__(self, fast_restart_search: bool = False) -> None:
         self.previous_screen = ScreenName.UNKNOWN
         self.awaiting_purchase_result = False
+        self.fast_restart_search = fast_restart_search
 
     def handle(self, screen: ScreenName) -> StepDecision:
         if screen is ScreenName.S8_FINAL_SUCCESS:
@@ -39,7 +40,11 @@ class AuctionStateMachine:
             return StepDecision(
                 status="recover",
                 message="Buyout failed after loader, returning to search menu.",
-                actions=("enter", "esc", "esc"),
+                actions=(
+                    ("enter", "esc", "esc", "enter", "enter")
+                    if self.fast_restart_search
+                    else ("enter", "esc", "esc")
+                ),
             )
 
         if self.awaiting_purchase_result and screen is ScreenName.UNKNOWN:
@@ -53,7 +58,7 @@ class AuctionStateMachine:
             return StepDecision(
                 status="advance",
                 message="Search menu detected.",
-                actions=("enter",),
+                actions=("enter", "enter"),
             )
 
         if screen is ScreenName.S2_SEARCH_CONFIRM:
@@ -77,7 +82,11 @@ class AuctionStateMachine:
             return StepDecision(
                 status="advance",
                 message="Empty auction list detected, returning to search menu.",
-                actions=("esc",),
+                actions=(
+                    ("esc", "enter", "enter")
+                    if self.fast_restart_search
+                    else ("esc",)
+                ),
             )
 
         if screen is ScreenName.S4_LOT_DETAILS:
