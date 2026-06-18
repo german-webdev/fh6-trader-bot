@@ -28,6 +28,14 @@ class TimingConfig:
     detect_interval_ms: int
     search_timeout_ms: int
     purchase_timeout_ms: int
+    startup_delay_ms: int
+
+
+@dataclass(slots=True)
+class DetectorConfig:
+    match_threshold: float
+    loader_match_threshold: float
+    unknown_limit: int
 
 
 @dataclass(slots=True)
@@ -42,6 +50,7 @@ class AppConfig:
     window: WindowConfig
     controls: ControlConfig
     timings: TimingConfig
+    detector: DetectorConfig
     debug: DebugConfig
 
 
@@ -53,5 +62,6 @@ def load_config(config_path: str | Path) -> AppConfig:
         window=WindowConfig(**raw["window"]),
         controls=ControlConfig(**raw["controls"]),
         timings=TimingConfig(**raw["timings"]),
+        detector=DetectorConfig(**raw["detector"]),
         debug=DebugConfig(**raw["debug"]),
     )

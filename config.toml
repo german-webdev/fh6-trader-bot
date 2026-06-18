@@ -16,6 +16,12 @@ after_down_ms = 200
 detect_interval_ms = 150
 search_timeout_ms = 4000
 purchase_timeout_ms = 8000
+startup_delay_ms = 1000
+
+[detector]
+match_threshold = 0.83
+loader_match_threshold = 0.8
+unknown_limit = 10
 
 [debug]
 save_unknown_frames = true

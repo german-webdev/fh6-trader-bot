@@ -20,3 +20,6 @@ trade-bot = "bot.cli:main"
 
 [tool.setuptools]
 packages = ["bot"]
+
+[tool.setuptools.package-data]
+bot = ["resources/reference/*.png"]
