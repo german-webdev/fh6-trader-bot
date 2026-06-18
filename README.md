@@ -29,6 +29,8 @@ python -m bot debug-shot
 python -m bot check-window
 ```
 
+Базовая конфигурация хранится в [`config.toml`](</C:/Users/musiq/OneDrive/Документы/trade-bot/config.toml>).
+
 Горячие клавиши:
 
 - `F6` — старт

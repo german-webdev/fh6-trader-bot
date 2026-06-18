@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fh6-trade-bot"
+version = "0.1.0"
+description = "Desktop bot for auction search and buyout automation in a Windows game."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+  { name = "Ukubona Konke", email = "musique128@gmail.com" }
+]
+dependencies = []
+
+[project.scripts]
+trade-bot = "bot.cli:main"
+
+[tool.setuptools]
+packages = ["bot"]

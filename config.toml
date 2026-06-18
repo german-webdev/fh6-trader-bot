@@ -1,0 +1,23 @@
+[window]
+title_contains = "Forza"
+monitor_index = 0
+required_width = 1920
+required_height = 1080
+
+[controls]
+start_hotkey = "f6"
+pause_hotkey = "f7"
+stop_hotkey = "f8"
+
+[timings]
+after_enter_ms = 300
+after_esc_ms = 300
+after_down_ms = 200
+detect_interval_ms = 150
+search_timeout_ms = 4000
+purchase_timeout_ms = 8000
+
+[debug]
+save_unknown_frames = true
+show_detector_scores = true
+output_dir = "debug_frames"
