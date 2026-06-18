@@ -67,6 +67,16 @@ class DetectorTests(unittest.TestCase):
         self.assertGreaterEqual(s2_score, 0.72)
         self.assertLessEqual(best_score - s2_score, 0.08)
 
+    def test_runtime_search_menu_return_frame_stays_within_fast_remap_window(self) -> None:
+        detection = self._detect(
+            self.debug_frames["unknown-20260619-024900-099941.png"]
+        )
+        s1_score = detection.scores[ScreenName.S1_SEARCH_MENU.value]
+        best_score = max(detection.scores.values())
+
+        self.assertGreaterEqual(s1_score, 0.78)
+        self.assertLessEqual(best_score - s1_score, 0.10)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -73,6 +73,9 @@ class BotRuntime:
     def _search_menu_return_grace_seconds(self) -> float:
         return 0.8
 
+    def _search_menu_return_phase_timeout_seconds(self) -> float:
+        return 2.0
+
     def _lot_open_phase_grace_seconds(self) -> float:
         return 1.2
 
@@ -107,6 +110,7 @@ class BotRuntime:
         unknown_grace_until = 0.0
         search_phase_started_at: float | None = None
         search_confirm_phase_started_at: float | None = None
+        search_menu_return_started_at: float | None = None
         lot_open_phase_started_at: float | None = None
         buyout_confirm_phase_started_at: float | None = None
         purchase_result_started_at: float | None = None
@@ -191,9 +195,26 @@ class BotRuntime:
             s3b_score = detection.scores.get(ScreenName.S3B_LIST_EMPTY.value, 0.0)
             s4_score = detection.scores.get(ScreenName.S4_LOT_DETAILS.value, 0.0)
             s5_score = detection.scores.get(ScreenName.S5_BUY_CONFIRM.value, 0.0)
+            s1_score = detection.scores.get(ScreenName.S1_SEARCH_MENU.value, 0.0)
             s2_score = detection.scores.get(ScreenName.S2_SEARCH_CONFIRM.value, 0.0)
             s7_score = detection.scores.get(ScreenName.S7_BUY_SUCCESS.value, 0.0)
             s8_score = detection.scores.get(ScreenName.S8_FINAL_SUCCESS.value, 0.0)
+
+            if (
+                screen is ScreenName.UNKNOWN
+                and search_menu_return_started_at is not None
+            ):
+                search_menu_return_elapsed = (
+                    time.monotonic() - search_menu_return_started_at
+                )
+                if search_menu_return_elapsed >= 0.20:
+                    if s1_score >= 0.78 and (candidate_score - s1_score) <= 0.10:
+                        screen = ScreenName.S1_SEARCH_MENU
+                    elif (
+                        candidate_screen is ScreenName.S1_SEARCH_MENU
+                        and candidate_score >= 0.78
+                    ):
+                        screen = ScreenName.S1_SEARCH_MENU
 
             if (
                 screen is ScreenName.UNKNOWN
@@ -208,6 +229,23 @@ class BotRuntime:
                         and candidate_score >= 0.74
                     ):
                         screen = ScreenName.S2_SEARCH_CONFIRM
+
+            if (
+                search_menu_return_started_at is not None
+                and (screen is ScreenName.S1_SEARCH_MENU or screen is ScreenName.S2_SEARCH_CONFIRM)
+            ):
+                search_menu_return_started_at = None
+
+            if (
+                screen is ScreenName.UNKNOWN
+                and search_menu_return_started_at is not None
+                and (time.monotonic() - search_menu_return_started_at)
+                >= self._search_menu_return_phase_timeout_seconds()
+            ):
+                self.logger.warning(
+                    "Search menu did not stabilize after empty list, forcing S1 retry"
+                )
+                screen = ScreenName.S1_SEARCH_MENU
 
             if (
                 screen is ScreenName.UNKNOWN
@@ -473,6 +511,7 @@ class BotRuntime:
                 elif screen is ScreenName.S3B_LIST_EMPTY and decision.actions == ("esc",):
                     search_phase_started_at = None
                     search_confirm_phase_started_at = None
+                    search_menu_return_started_at = time.monotonic()
                     unknown_grace_until = (
                         time.monotonic() + self._search_menu_return_grace_seconds()
                     )
