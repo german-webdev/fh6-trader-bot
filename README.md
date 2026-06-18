@@ -4,7 +4,7 @@ Desktop bot for Windows that automates the in-game auction loop by recognizing g
 
 ## Features
 
-- detects the current auction screen from built-in reference images;
+- detects auction states from focused UI triggers instead of the whole screen;
 - repeats the search loop when the lot list is empty;
 - opens the first detected lot;
 - moves from bid to buyout and confirms the purchase;
@@ -34,7 +34,9 @@ python -m bot check-window
 
 - Windows 11
 - Python 3.12+
-- fixed game resolution and stable UI scale
+- Russian in-game interface
+- 1920x1080 or 2560x1440 resolution
+- stable UI scale
 - the game window title must contain the value configured in `window.title_contains`
 
 ## Setup

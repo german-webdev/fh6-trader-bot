@@ -5,7 +5,7 @@ from importlib import resources
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter, ImageOps
 
 from bot.config import AppConfig
 from bot.screens import ScreenName
@@ -15,10 +15,17 @@ Region = tuple[float, float, float, float]
 
 
 @dataclass(slots=True)
-class ScreenTemplate:
+class ScreenTrigger:
+    region: Region
+    weight: float = 1.0
+    min_score: float = 0.84
+
+
+@dataclass(slots=True)
+class ScreenProfile:
     screen: ScreenName
     filename: str
-    regions: tuple[Region, ...]
+    triggers: tuple[ScreenTrigger, ...]
 
 
 @dataclass(slots=True)
@@ -34,51 +41,85 @@ class DetectionResult:
         return self.screen is not ScreenName.UNKNOWN
 
 
-TEMPLATES: tuple[ScreenTemplate, ...] = (
-    ScreenTemplate(
+PROFILES: tuple[ScreenProfile, ...] = (
+    ScreenProfile(
         screen=ScreenName.S1_SEARCH_MENU,
         filename="1. Поиск аукционов.png",
-        regions=((0.02, 0.10, 0.22, 0.29), (0.02, 0.50, 0.24, 0.76)),
+        triggers=(
+            ScreenTrigger((0.03, 0.10, 0.27, 0.18), weight=1.2, min_score=0.88),
+            ScreenTrigger((0.02, 0.47, 0.25, 0.58), weight=1.8, min_score=0.90),
+            ScreenTrigger((0.03, 0.92, 0.24, 0.99), weight=1.0, min_score=0.86),
+        ),
     ),
-    ScreenTemplate(
+    ScreenProfile(
         screen=ScreenName.S2_SEARCH_CONFIRM,
         filename="2. Подтвердить поиск.png",
-        regions=((0.20, 0.20, 0.80, 0.84),),
+        triggers=(
+            ScreenTrigger((0.23, 0.23, 0.57, 0.37), weight=1.3, min_score=0.88),
+            ScreenTrigger((0.23, 0.73, 0.58, 0.84), weight=1.8, min_score=0.90),
+        ),
     ),
-    ScreenTemplate(
+    ScreenProfile(
         screen=ScreenName.S3A_LIST_PRESENT,
         filename="3-1. Лот присутствует.png",
-        regions=((0.02, 0.11, 0.40, 0.36), (0.40, 0.10, 0.99, 0.92)),
+        triggers=(
+            ScreenTrigger((0.03, 0.10, 0.27, 0.18), weight=1.0, min_score=0.88),
+            ScreenTrigger((0.52, 0.11, 0.95, 0.19), weight=1.5, min_score=0.88),
+            ScreenTrigger((0.70, 0.70, 0.83, 0.82), weight=1.8, min_score=0.88),
+        ),
     ),
-    ScreenTemplate(
+    ScreenProfile(
         screen=ScreenName.S3B_LIST_EMPTY,
         filename="3-2. Лот отсутствует.png",
-        regions=((0.43, 0.27, 0.90, 0.68),),
+        triggers=(
+            ScreenTrigger((0.03, 0.10, 0.27, 0.18), weight=1.0, min_score=0.88),
+            ScreenTrigger((0.58, 0.46, 0.95, 0.64), weight=2.0, min_score=0.90),
+            ScreenTrigger((0.03, 0.92, 0.20, 0.99), weight=1.0, min_score=0.86),
+        ),
     ),
-    ScreenTemplate(
+    ScreenProfile(
         screen=ScreenName.S4_LOT_DETAILS,
         filename="4. Экран с выбраной кнопкой выкупа.png",
-        regions=((0.02, 0.11, 0.22, 0.59), (0.02, 0.74, 0.22, 0.92)),
+        triggers=(
+            ScreenTrigger((0.03, 0.10, 0.24, 0.19), weight=1.2, min_score=0.88),
+            ScreenTrigger((0.03, 0.84, 0.22, 0.95), weight=2.0, min_score=0.90),
+            ScreenTrigger((0.03, 0.92, 0.22, 0.99), weight=1.0, min_score=0.86),
+        ),
     ),
-    ScreenTemplate(
+    ScreenProfile(
         screen=ScreenName.S5_BUY_CONFIRM,
         filename="5. Экран подтверждения.png",
-        regions=((0.25, 0.30, 0.77, 0.72),),
+        triggers=(
+            ScreenTrigger((0.26, 0.32, 0.55, 0.40), weight=1.2, min_score=0.90),
+            ScreenTrigger((0.34, 0.40, 0.66, 0.48), weight=1.0, min_score=0.86),
+            ScreenTrigger((0.26, 0.48, 0.54, 0.59), weight=2.0, min_score=0.92),
+        ),
     ),
-    ScreenTemplate(
+    ScreenProfile(
         screen=ScreenName.S6_LOADER,
         filename="6. Экран с лоадером.png",
-        regions=((0.25, 0.31, 0.77, 0.71),),
+        triggers=(
+            ScreenTrigger((0.26, 0.32, 0.55, 0.40), weight=1.0, min_score=0.88),
+            ScreenTrigger((0.32, 0.40, 0.67, 0.55), weight=2.1, min_score=0.90),
+        ),
     ),
-    ScreenTemplate(
+    ScreenProfile(
         screen=ScreenName.S7_BUY_SUCCESS,
         filename="7. Экран успешного выкупа.png",
-        regions=((0.25, 0.31, 0.77, 0.71),),
+        triggers=(
+            ScreenTrigger((0.26, 0.34, 0.55, 0.42), weight=1.4, min_score=0.90),
+            ScreenTrigger((0.28, 0.41, 0.67, 0.56), weight=1.8, min_score=0.88),
+            ScreenTrigger((0.03, 0.95, 0.13, 0.99), weight=0.8, min_score=0.82),
+        ),
     ),
-    ScreenTemplate(
+    ScreenProfile(
         screen=ScreenName.S8_FINAL_SUCCESS,
         filename="8. Финальный экран.png",
-        regions=((0.02, 0.56, 0.22, 0.77), (0.02, 0.75, 0.22, 0.87)),
+        triggers=(
+            ScreenTrigger((0.03, 0.76, 0.26, 0.84), weight=1.5, min_score=0.90),
+            ScreenTrigger((0.03, 0.84, 0.22, 0.95), weight=2.0, min_score=0.90),
+            ScreenTrigger((0.03, 0.92, 0.22, 0.99), weight=0.8, min_score=0.84),
+        ),
     ),
 )
 
@@ -96,17 +137,43 @@ def _crop_region(image: Image.Image, region: Region) -> Image.Image:
     return image.crop((left, top, right, bottom))
 
 
-def _to_gray_array(image: Image.Image, size: tuple[int, int] = (320, 180)) -> np.ndarray:
-    prepared = image.convert("L").resize(size, Image.Resampling.BILINEAR)
+def _fit_size(size: tuple[int, int]) -> tuple[int, int]:
+    width, height = size
+    max_width = 320
+    max_height = 180
+    scale = min(max_width / width, max_height / height, 1.0)
+    fitted_width = max(48, int(width * scale))
+    fitted_height = max(24, int(height * scale))
+    return (fitted_width, fitted_height)
+
+
+def _to_array(image: Image.Image, size: tuple[int, int]) -> np.ndarray:
+    prepared = ImageOps.autocontrast(
+        image.convert("L").resize(size, Image.Resampling.BILINEAR)
+    )
     return np.asarray(prepared, dtype=np.float32)
 
 
-def _region_similarity(current: Image.Image, template: Image.Image, region: Region) -> float:
-    current_arr = _to_gray_array(_crop_region(current, region))
-    template_arr = _to_gray_array(_crop_region(template, region))
-    diff = np.abs(current_arr - template_arr).mean()
-    similarity = 1.0 - (diff / 255.0)
-    return max(0.0, min(1.0, similarity))
+def _to_edge_array(image: Image.Image, size: tuple[int, int]) -> np.ndarray:
+    prepared = ImageOps.autocontrast(
+        image.convert("L")
+        .resize(size, Image.Resampling.BILINEAR)
+        .filter(ImageFilter.FIND_EDGES)
+    )
+    return np.asarray(prepared, dtype=np.float32)
+
+
+def _similarity(current: Image.Image, reference: Image.Image) -> float:
+    size = _fit_size(reference.size)
+    current_gray = _to_array(current, size)
+    reference_gray = _to_array(reference, size)
+    current_edges = _to_edge_array(current, size)
+    reference_edges = _to_edge_array(reference, size)
+
+    gray_score = 1.0 - (np.abs(current_gray - reference_gray).mean() / 255.0)
+    edge_score = 1.0 - (np.abs(current_edges - reference_edges).mean() / 255.0)
+    score = (gray_score * 0.35) + (edge_score * 0.65)
+    return max(0.0, min(1.0, float(score)))
 
 
 class ScreenDetector:
@@ -114,41 +181,69 @@ class ScreenDetector:
         self.config = config
         base_dir = _resource_dir()
         self.templates = {
-            template.screen: Image.open(base_dir / template.filename).convert("RGB")
-            for template in TEMPLATES
+            profile.screen: Image.open(base_dir / profile.filename).convert("RGB")
+            for profile in PROFILES
         }
 
-    def _score_template(self, image: Image.Image, template: ScreenTemplate) -> float:
-        reference = self.templates[template.screen]
-        scores = [
-            _region_similarity(image, reference, region)
-            for region in template.regions
-        ]
-        return float(sum(scores) / len(scores))
+    def _screen_threshold(self, screen: ScreenName) -> float:
+        if screen is ScreenName.S6_LOADER:
+            return self.config.detector.loader_match_threshold
+        return self.config.detector.match_threshold
+
+    def _score_profile(
+        self,
+        image: Image.Image,
+        profile: ScreenProfile,
+    ) -> tuple[float, bool]:
+        reference = self.templates[profile.screen]
+        total_weight = 0.0
+        weighted_score = 0.0
+        minimum_trigger_score = 1.0
+        all_required_triggers_matched = True
+
+        for trigger in profile.triggers:
+            current_crop = _crop_region(image, trigger.region)
+            reference_crop = _crop_region(reference, trigger.region)
+            trigger_score = _similarity(current_crop, reference_crop)
+            weighted_score += trigger_score * trigger.weight
+            total_weight += trigger.weight
+            minimum_trigger_score = min(minimum_trigger_score, trigger_score)
+            if trigger_score < trigger.min_score:
+                all_required_triggers_matched = False
+
+        profile_score = weighted_score / total_weight
+        effective_score = profile_score
+        if not all_required_triggers_matched:
+            effective_score = min(profile_score, minimum_trigger_score)
+        return (float(effective_score), all_required_triggers_matched)
 
     def detect(self, image: Image.Image) -> DetectionResult:
-        template_scores = {
-            template.screen.value: self._score_template(image, template)
-            for template in TEMPLATES
-        }
-        ordered = sorted(template_scores.items(), key=lambda item: item[1], reverse=True)
+        profile_scores: dict[str, float] = {}
+        profile_matches: dict[str, bool] = {}
+
+        for profile in PROFILES:
+            score, matched = self._score_profile(image, profile)
+            profile_scores[profile.screen.value] = score
+            profile_matches[profile.screen.value] = matched
+
+        ordered = sorted(profile_scores.items(), key=lambda item: item[1], reverse=True)
         best_screen_value, best_score = ordered[0]
         second_best = ordered[1][1] if len(ordered) > 1 else 0.0
         margin = best_score - second_best
 
         best_screen = ScreenName(best_screen_value)
-        threshold = (
-            self.config.detector.loader_match_threshold
-            if best_screen is ScreenName.S6_LOADER
-            else self.config.detector.match_threshold
-        )
-        if best_score < threshold or margin < self.config.detector.min_margin:
+        threshold = self._screen_threshold(best_screen)
+        if (
+            best_score < threshold
+            or margin < self.config.detector.min_margin
+            or not profile_matches[best_screen.value]
+        ):
             return DetectionResult(
                 screen=ScreenName.UNKNOWN,
                 score=best_score,
                 threshold=threshold,
                 margin=margin,
-                scores=template_scores,
+                scores=profile_scores,
             )
 
         return DetectionResult(
@@ -156,5 +251,5 @@ class ScreenDetector:
             score=best_score,
             threshold=threshold,
             margin=margin,
-            scores=template_scores,
+            scores=profile_scores,
         )

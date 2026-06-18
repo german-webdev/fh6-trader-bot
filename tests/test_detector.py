@@ -35,6 +35,22 @@ class DetectorTests(unittest.TestCase):
                 self.assertEqual(result.screen, expected)
                 self.assertGreaterEqual(result.score, result.threshold)
 
+    def test_downscaled_reference_images_match_expected_screens(self) -> None:
+        detector = ScreenDetector(load_config("config.toml"))
+        base_dir = Path("bot/resources/reference")
+
+        for filename, expected in EXPECTED.items():
+            with self.subTest(filename=filename):
+                image = (
+                    Image.open(base_dir / filename)
+                    .convert("RGB")
+                    .resize((1920, 1080), Image.Resampling.BILINEAR)
+                )
+                result = detector.detect(image)
+                self.assertEqual(result.screen, expected)
+                self.assertGreaterEqual(result.score, result.threshold)
+                self.assertGreater(result.margin, 0.05)
+
 
 if __name__ == "__main__":
     unittest.main()
