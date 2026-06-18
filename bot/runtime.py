@@ -69,6 +69,9 @@ class BotRuntime:
     def _search_phase_grace_seconds(self) -> float:
         return 2.4
 
+    def _lot_open_phase_grace_seconds(self) -> float:
+        return 3.6
+
     def run(self, dry_run: bool = False) -> dict[str, Any]:
         window = find_window(self.config.window.title_contains)
         if window is None:
@@ -94,6 +97,7 @@ class BotRuntime:
         loader_started_at: float | None = None
         unknown_grace_until = 0.0
         search_phase_started_at: float | None = None
+        lot_open_phase_started_at: float | None = None
         self.logger.info("Runtime started")
         time.sleep(self.config.timings.startup_delay_ms / 1000.0)
 
@@ -172,6 +176,7 @@ class BotRuntime:
             candidate_screen, candidate_score = self._best_candidate(detection.scores)
             s3a_score = detection.scores.get(ScreenName.S3A_LIST_PRESENT.value, 0.0)
             s3b_score = detection.scores.get(ScreenName.S3B_LIST_EMPTY.value, 0.0)
+            s4_score = detection.scores.get(ScreenName.S4_LOT_DETAILS.value, 0.0)
 
             if (
                 screen is ScreenName.UNKNOWN
@@ -190,6 +195,25 @@ class BotRuntime:
                 ScreenName.S4_LOT_DETAILS,
             }:
                 search_phase_started_at = None
+
+            if (
+                screen is ScreenName.UNKNOWN
+                and lot_open_phase_started_at is not None
+                and (time.monotonic() - lot_open_phase_started_at)
+                >= self._lot_open_phase_grace_seconds()
+                and s4_score >= 0.74
+                and (candidate_score - s4_score) <= 0.05
+            ):
+                screen = ScreenName.S4_LOT_DETAILS
+
+            if screen in {
+                ScreenName.S4_LOT_DETAILS,
+                ScreenName.S5_BUY_CONFIRM,
+                ScreenName.S6_LOADER,
+                ScreenName.S7_BUY_SUCCESS,
+                ScreenName.S8_FINAL_SUCCESS,
+            }:
+                lot_open_phase_started_at = None
 
             if screen is ScreenName.S8_FINAL_SUCCESS:
                 final_success_count += 1
@@ -349,6 +373,11 @@ class BotRuntime:
                     search_phase_started_at = time.monotonic()
                     unknown_grace_until = (
                         search_phase_started_at + self._search_phase_grace_seconds()
+                    )
+                elif screen is ScreenName.S3A_LIST_PRESENT and decision.actions == ("enter",):
+                    lot_open_phase_started_at = time.monotonic()
+                    unknown_grace_until = (
+                        lot_open_phase_started_at + self._lot_open_phase_grace_seconds()
                     )
 
             time.sleep(self.config.timings.detect_interval_ms / 1000.0)
