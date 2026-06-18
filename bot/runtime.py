@@ -72,6 +72,9 @@ class BotRuntime:
     def _lot_open_phase_grace_seconds(self) -> float:
         return 3.6
 
+    def _buyout_confirm_phase_grace_seconds(self) -> float:
+        return 2.2
+
     def run(self, dry_run: bool = False) -> dict[str, Any]:
         window = find_window(self.config.window.title_contains)
         if window is None:
@@ -98,6 +101,7 @@ class BotRuntime:
         unknown_grace_until = 0.0
         search_phase_started_at: float | None = None
         lot_open_phase_started_at: float | None = None
+        buyout_confirm_phase_started_at: float | None = None
         self.logger.info("Runtime started")
         time.sleep(self.config.timings.startup_delay_ms / 1000.0)
 
@@ -177,6 +181,7 @@ class BotRuntime:
             s3a_score = detection.scores.get(ScreenName.S3A_LIST_PRESENT.value, 0.0)
             s3b_score = detection.scores.get(ScreenName.S3B_LIST_EMPTY.value, 0.0)
             s4_score = detection.scores.get(ScreenName.S4_LOT_DETAILS.value, 0.0)
+            s5_score = detection.scores.get(ScreenName.S5_BUY_CONFIRM.value, 0.0)
 
             if (
                 screen is ScreenName.UNKNOWN
@@ -214,6 +219,28 @@ class BotRuntime:
                 ScreenName.S8_FINAL_SUCCESS,
             }:
                 lot_open_phase_started_at = None
+
+            if (
+                screen is ScreenName.UNKNOWN
+                and buyout_confirm_phase_started_at is not None
+                and (time.monotonic() - buyout_confirm_phase_started_at)
+                >= 0.5
+            ):
+                if s5_score >= 0.74 and (candidate_score - s5_score) <= 0.05:
+                    screen = ScreenName.S5_BUY_CONFIRM
+                elif (
+                    candidate_screen is ScreenName.S2_SEARCH_CONFIRM
+                    and candidate_score >= 0.82
+                ):
+                    screen = ScreenName.S5_BUY_CONFIRM
+
+            if screen in {
+                ScreenName.S5_BUY_CONFIRM,
+                ScreenName.S6_LOADER,
+                ScreenName.S7_BUY_SUCCESS,
+                ScreenName.S8_FINAL_SUCCESS,
+            }:
+                buyout_confirm_phase_started_at = None
 
             if screen is ScreenName.S8_FINAL_SUCCESS:
                 final_success_count += 1
@@ -378,6 +405,12 @@ class BotRuntime:
                     lot_open_phase_started_at = time.monotonic()
                     unknown_grace_until = (
                         lot_open_phase_started_at + self._lot_open_phase_grace_seconds()
+                    )
+                elif screen is ScreenName.S4_LOT_DETAILS and decision.actions == ("down", "enter"):
+                    buyout_confirm_phase_started_at = time.monotonic()
+                    unknown_grace_until = (
+                        buyout_confirm_phase_started_at
+                        + self._buyout_confirm_phase_grace_seconds()
                     )
 
             time.sleep(self.config.timings.detect_interval_ms / 1000.0)
