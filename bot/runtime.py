@@ -67,16 +67,16 @@ class BotRuntime:
         }
 
     def _search_phase_grace_seconds(self) -> float:
-        return 2.4
+        return 1.4
 
     def _lot_open_phase_grace_seconds(self) -> float:
-        return 3.6
+        return 1.2
 
     def _buyout_confirm_phase_grace_seconds(self) -> float:
-        return 2.2
+        return 0.8
 
     def _purchase_result_grace_seconds(self) -> float:
-        return 1.8
+        return 1.2
 
     def run(self, dry_run: bool = False) -> dict[str, Any]:
         window = find_window(self.config.window.title_contains)
@@ -209,12 +209,17 @@ class BotRuntime:
             if (
                 screen is ScreenName.UNKNOWN
                 and lot_open_phase_started_at is not None
-                and (time.monotonic() - lot_open_phase_started_at)
-                >= self._lot_open_phase_grace_seconds()
-                and s4_score >= 0.74
-                and (candidate_score - s4_score) <= 0.05
             ):
-                screen = ScreenName.S4_LOT_DETAILS
+                lot_open_elapsed = time.monotonic() - lot_open_phase_started_at
+                if lot_open_elapsed >= 0.65:
+                    if s4_score >= 0.80 and (candidate_score - s4_score) <= 0.04:
+                        screen = ScreenName.S4_LOT_DETAILS
+                    elif (
+                        lot_open_elapsed >= self._lot_open_phase_grace_seconds()
+                        and s4_score >= 0.74
+                        and (candidate_score - s4_score) <= 0.05
+                    ):
+                        screen = ScreenName.S4_LOT_DETAILS
 
             if screen in {
                 ScreenName.S4_LOT_DETAILS,
@@ -228,16 +233,28 @@ class BotRuntime:
             if (
                 screen is ScreenName.UNKNOWN
                 and buyout_confirm_phase_started_at is not None
-                and (time.monotonic() - buyout_confirm_phase_started_at)
-                >= 0.5
             ):
-                if s5_score >= 0.74 and (candidate_score - s5_score) <= 0.05:
-                    screen = ScreenName.S5_BUY_CONFIRM
-                elif (
-                    candidate_screen is ScreenName.S2_SEARCH_CONFIRM
-                    and candidate_score >= 0.82
-                ):
-                    screen = ScreenName.S5_BUY_CONFIRM
+                buyout_confirm_elapsed = time.monotonic() - buyout_confirm_phase_started_at
+                if buyout_confirm_elapsed >= 0.25:
+                    if s5_score >= 0.80 and (candidate_score - s5_score) <= 0.05:
+                        screen = ScreenName.S5_BUY_CONFIRM
+                    elif (
+                        candidate_screen is ScreenName.S2_SEARCH_CONFIRM
+                        and candidate_score >= 0.84
+                    ):
+                        screen = ScreenName.S5_BUY_CONFIRM
+                    elif (
+                        buyout_confirm_elapsed >= self._buyout_confirm_phase_grace_seconds()
+                        and s5_score >= 0.74
+                        and (candidate_score - s5_score) <= 0.05
+                    ):
+                        screen = ScreenName.S5_BUY_CONFIRM
+                    elif (
+                        buyout_confirm_elapsed >= self._buyout_confirm_phase_grace_seconds()
+                        and candidate_screen is ScreenName.S2_SEARCH_CONFIRM
+                        and candidate_score >= 0.82
+                    ):
+                        screen = ScreenName.S5_BUY_CONFIRM
 
             if screen is ScreenName.UNKNOWN and machine.awaiting_purchase_result:
                 purchase_result_elapsed = (
