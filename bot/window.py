@@ -94,3 +94,17 @@ def find_window(title_contains: str) -> WindowInfo | None:
 
     matches.sort(key=lambda item: (item.width * item.height), reverse=True)
     return matches[0]
+
+
+def get_foreground_window() -> int | None:
+    hwnd = user32.GetForegroundWindow()
+    if hwnd == 0:
+        return None
+    return hwnd
+
+
+def is_foreground_window(hwnd: int) -> bool:
+    foreground = get_foreground_window()
+    if foreground is None:
+        return False
+    return foreground == hwnd

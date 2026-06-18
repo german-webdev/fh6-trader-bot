@@ -14,31 +14,50 @@ def _print_json(payload: dict[str, Any]) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="trade-bot",
-        description="Desktop bot for auction search and buyout automation.",
-    )
-    parser.add_argument(
+    common_parser = argparse.ArgumentParser(add_help=False)
+    common_parser.add_argument(
         "--config",
         default="config.toml",
         help="Path to the bot configuration file.",
     )
 
+    parser = argparse.ArgumentParser(
+        prog="trade-bot",
+        description="Desktop bot for auction search and buyout automation.",
+        parents=[common_parser],
+    )
+
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    run_parser = subparsers.add_parser("run", help="Start the bot runtime.")
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Start the bot runtime.",
+        parents=[common_parser],
+    )
     run_parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Evaluate flow without sending key presses.",
     )
-    detect_parser = subparsers.add_parser("detect", help="Detect the current screen state.")
+    detect_parser = subparsers.add_parser(
+        "detect",
+        help="Detect the current screen state.",
+        parents=[common_parser],
+    )
     detect_parser.add_argument(
         "--image",
         help="Optional path to a PNG file for offline screen detection.",
     )
-    subparsers.add_parser("check-window", help="Validate game window settings.")
-    subparsers.add_parser("debug-shot", help="Save a debug placeholder artifact.")
+    subparsers.add_parser(
+        "check-window",
+        help="Validate game window settings.",
+        parents=[common_parser],
+    )
+    subparsers.add_parser(
+        "debug-shot",
+        help="Save a debug placeholder artifact.",
+        parents=[common_parser],
+    )
 
     return parser
 

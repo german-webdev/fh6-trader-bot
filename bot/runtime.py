@@ -17,7 +17,7 @@ from bot.hotkeys import HotkeyState
 from bot.input import InputController
 from bot.screens import ScreenName
 from bot.state_machine import AuctionStateMachine
-from bot.window import find_window
+from bot.window import find_window, is_foreground_window
 
 
 class BotRuntime:
@@ -63,9 +63,14 @@ class BotRuntime:
         machine = AuctionStateMachine()
         self.input.dry_run = dry_run
         paused = False
+        started = False
         cycles = 0
         unknown_count = 0
         purchase_unknown_count = 0
+        final_success_count = 0
+        start_screen_count = 0
+        bootstrapped = False
+        last_wait_log = ""
         start_time = time.monotonic()
         loader_started_at: float | None = None
         self.logger.info("Runtime started")
@@ -86,10 +91,24 @@ class BotRuntime:
                 paused = not paused
                 self.logger.info("Paused toggled: %s", paused)
             if hotkey == "start":
+                if not started:
+                    started = True
+                    self.logger.info("Start confirmed by hotkey, waiting for active game window")
                 paused = False
                 self.logger.info("Runtime resumed by F6")
 
             if paused:
+                time.sleep(0.1)
+                continue
+
+            if not started:
+                wait_message = (
+                    f"Waiting for {self.config.controls.start_hotkey.upper()} "
+                    "to start with the game window active."
+                )
+                if wait_message != last_wait_log:
+                    self.logger.info(wait_message)
+                    last_wait_log = wait_message
                 time.sleep(0.1)
                 continue
 
@@ -103,8 +122,43 @@ class BotRuntime:
                     message="Game window disappeared during runtime.",
                 )
 
+            if not is_foreground_window(current_window.hwnd):
+                wait_message = "Game window is not active, waiting for focus."
+                if wait_message != last_wait_log:
+                    self.logger.info(wait_message)
+                    last_wait_log = wait_message
+                time.sleep(0.1)
+                continue
+
+            last_wait_log = ""
             detection = self.detector.detect(image)
             screen = detection.screen
+
+            if screen is ScreenName.S8_FINAL_SUCCESS:
+                final_success_count += 1
+            else:
+                final_success_count = 0
+
+            if not bootstrapped:
+                if screen is ScreenName.S1_SEARCH_MENU:
+                    start_screen_count += 1
+                else:
+                    start_screen_count = 0
+
+                if start_screen_count >= self.config.detector.start_confirmations:
+                    bootstrapped = True
+                    self.logger.info("Start screen confirmed, enabling actions")
+                else:
+                    self.logger.info(
+                        "screen=%s score=%.4f margin=%.4f status=bootstrap actions= message=Waiting for confirmed S1 start screen (%s/%s)",
+                        screen.value,
+                        detection.score,
+                        detection.margin,
+                        start_screen_count,
+                        self.config.detector.start_confirmations,
+                    )
+                    time.sleep(self.config.timings.detect_interval_ms / 1000.0)
+                    continue
 
             if screen is ScreenName.S1_SEARCH_MENU:
                 cycles += 1
@@ -160,10 +214,26 @@ class BotRuntime:
                 continue
 
             decision = machine.handle(screen)
+            if (
+                screen is ScreenName.S8_FINAL_SUCCESS
+                and final_success_count < self.config.detector.success_confirmations
+            ):
+                self.logger.info(
+                    "screen=%s score=%.4f margin=%.4f status=confirm actions= message=Waiting for repeated final success confirmation (%s/%s)",
+                    screen.value,
+                    detection.score,
+                    detection.margin,
+                    final_success_count,
+                    self.config.detector.success_confirmations,
+                )
+                time.sleep(self.config.timings.detect_interval_ms / 1000.0)
+                continue
+
             self.logger.info(
-                "screen=%s score=%.4f status=%s actions=%s message=%s",
+                "screen=%s score=%.4f margin=%.4f status=%s actions=%s message=%s",
                 screen.value,
                 detection.score,
+                detection.margin,
                 decision.status,
                 ",".join(decision.actions),
                 decision.message,
@@ -197,6 +267,7 @@ class BotRuntime:
                 "screen": detection.screen.value,
                 "score": round(detection.score, 4),
                 "threshold": detection.threshold,
+                "margin": round(detection.margin, 4),
                 "scores": detection.scores if self.config.debug.show_detector_scores else {},
                 "message": f"Detection completed for {image_path}.",
             }
@@ -215,6 +286,7 @@ class BotRuntime:
             "screen": detection.screen.value,
             "score": round(detection.score, 4),
             "threshold": detection.threshold,
+            "margin": round(detection.margin, 4),
             "scores": detection.scores if self.config.debug.show_detector_scores else {},
             "message": (
                 "Screen detected."

@@ -36,6 +36,9 @@ class DetectorConfig:
     match_threshold: float
     loader_match_threshold: float
     unknown_limit: int
+    success_confirmations: int
+    min_margin: float
+    start_confirmations: int
 
 
 @dataclass(slots=True)

@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
-from typing import Iterable
 
 import numpy as np
 from PIL import Image
@@ -27,6 +26,7 @@ class DetectionResult:
     screen: ScreenName
     score: float
     threshold: float
+    margin: float
     scores: dict[str, float]
 
     @property
@@ -38,7 +38,7 @@ TEMPLATES: tuple[ScreenTemplate, ...] = (
     ScreenTemplate(
         screen=ScreenName.S1_SEARCH_MENU,
         filename="1. Поиск аукционов.png",
-        regions=((0.01, 0.10, 0.25, 0.80),),
+        regions=((0.02, 0.10, 0.22, 0.29), (0.02, 0.50, 0.24, 0.76)),
     ),
     ScreenTemplate(
         screen=ScreenName.S2_SEARCH_CONFIRM,
@@ -58,7 +58,7 @@ TEMPLATES: tuple[ScreenTemplate, ...] = (
     ScreenTemplate(
         screen=ScreenName.S4_LOT_DETAILS,
         filename="4. Экран с выбраной кнопкой выкупа.png",
-        regions=((0.02, 0.11, 0.22, 0.59),),
+        regions=((0.02, 0.11, 0.22, 0.59), (0.02, 0.74, 0.22, 0.92)),
     ),
     ScreenTemplate(
         screen=ScreenName.S5_BUY_CONFIRM,
@@ -78,7 +78,7 @@ TEMPLATES: tuple[ScreenTemplate, ...] = (
     ScreenTemplate(
         screen=ScreenName.S8_FINAL_SUCCESS,
         filename="8. Финальный экран.png",
-        regions=((0.02, 0.10, 0.23, 0.86),),
+        regions=((0.02, 0.56, 0.22, 0.77), (0.02, 0.75, 0.22, 0.87)),
     ),
 )
 
@@ -124,28 +124,30 @@ class ScreenDetector:
             _region_similarity(image, reference, region)
             for region in template.regions
         ]
-        return sum(scores) / len(scores)
+        return float(sum(scores) / len(scores))
 
     def detect(self, image: Image.Image) -> DetectionResult:
         template_scores = {
-            template.screen.value: float(self._score_template(image, template))
+            template.screen.value: self._score_template(image, template)
             for template in TEMPLATES
         }
-        best_screen_value, best_score = max(
-            template_scores.items(),
-            key=lambda item: item[1],
-        )
+        ordered = sorted(template_scores.items(), key=lambda item: item[1], reverse=True)
+        best_screen_value, best_score = ordered[0]
+        second_best = ordered[1][1] if len(ordered) > 1 else 0.0
+        margin = best_score - second_best
+
         best_screen = ScreenName(best_screen_value)
         threshold = (
             self.config.detector.loader_match_threshold
             if best_screen is ScreenName.S6_LOADER
             else self.config.detector.match_threshold
         )
-        if best_score < threshold:
+        if best_score < threshold or margin < self.config.detector.min_margin:
             return DetectionResult(
                 screen=ScreenName.UNKNOWN,
                 score=best_score,
                 threshold=threshold,
+                margin=margin,
                 scores=template_scores,
             )
 
@@ -153,5 +155,6 @@ class ScreenDetector:
             screen=best_screen,
             score=best_score,
             threshold=threshold,
+            margin=margin,
             scores=template_scores,
         )

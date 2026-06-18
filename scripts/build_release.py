@@ -12,6 +12,7 @@ DIST = ROOT / "dist"
 RELEASE_DIR = DIST / "fh6-trader-bot"
 ZIP_PATH = DIST / "fh6-trader-bot-release.zip"
 STANDALONE_DIR = DIST / "standalone" / "fh6-trader-bot"
+STANDALONE_EXE = DIST / "standalone" / "fh6-trader-bot.exe"
 STANDALONE_ZIP_PATH = DIST / "fh6-trader-bot-standalone.zip"
 
 FILES_TO_COPY = (
@@ -83,7 +84,7 @@ def zip_release() -> None:
 
 
 def zip_standalone_if_present() -> None:
-    if not STANDALONE_DIR.exists():
+    if not STANDALONE_DIR.exists() and not STANDALONE_EXE.exists():
         return
 
     if STANDALONE_ZIP_PATH.exists():
@@ -94,8 +95,11 @@ def zip_standalone_if_present() -> None:
         "w",
         compression=zipfile.ZIP_DEFLATED,
     ) as archive:
-        for path in STANDALONE_DIR.rglob("*"):
-            archive.write(path, path.relative_to(STANDALONE_DIR.parent))
+        if STANDALONE_EXE.exists():
+            archive.write(STANDALONE_EXE, STANDALONE_EXE.relative_to(DIST))
+        else:
+            for path in STANDALONE_DIR.rglob("*"):
+                archive.write(path, path.relative_to(STANDALONE_DIR.parent))
 
 
 def main() -> None:
@@ -106,7 +110,7 @@ def main() -> None:
     zip_standalone_if_present()
     print(f"Release directory: {RELEASE_DIR}")
     print(f"Release zip: {ZIP_PATH}")
-    if STANDALONE_DIR.exists():
+    if STANDALONE_DIR.exists() or STANDALONE_EXE.exists():
         print(f"Standalone zip: {STANDALONE_ZIP_PATH}")
 
 

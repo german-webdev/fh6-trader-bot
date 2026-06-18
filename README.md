@@ -26,7 +26,7 @@ python -m bot check-window
 
 ## Runtime Hotkeys
 
-- `F6` resume
+- `F6` start or resume
 - `F7` pause or resume
 - `F8` stop
 
@@ -71,6 +71,10 @@ py -3.12 -m bot run --dry-run
 py -3.12 -m bot run
 ```
 
+8. Switch to the game window and press `F6` to arm the bot.
+
+The runtime does not begin screen detection or key presses until `F6` is pressed and the game window is in the foreground.
+
 ## Build Release Bundle
 
 Create a distributable release archive:
@@ -100,7 +104,7 @@ build_standalone.bat
 
 The standalone build is written to:
 
-- `dist/standalone/fh6-trader-bot/`
+- `dist/standalone/fh6-trader-bot.exe`
 
 ## Logging
 

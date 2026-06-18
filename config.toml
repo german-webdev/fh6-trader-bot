@@ -22,6 +22,9 @@ startup_delay_ms = 1000
 match_threshold = 0.83
 loader_match_threshold = 0.8
 unknown_limit = 10
+success_confirmations = 2
+min_margin = 0.03
+start_confirmations = 2
 
 [debug]
 save_unknown_frames = true
