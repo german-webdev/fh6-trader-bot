@@ -30,6 +30,7 @@ config.local.yaml
 
 # Internal working materials
 .agents/
+CODEX.md
 docs/
 assets/
 notes/

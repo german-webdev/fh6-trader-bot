@@ -6,7 +6,7 @@ import unittest
 from PIL import Image
 
 from bot.config import load_config
-from bot.detector import ScreenDetector
+from bot.detector import ScreenDetector, _pil_to_bgr
 from bot.screens import ScreenName
 
 
@@ -29,6 +29,7 @@ class DetectorTests(unittest.TestCase):
         cls.config = load_config("config.toml")
         cls.detector = ScreenDetector(cls.config)
         cls.assets = sorted(Path("assets").glob("*.png"))
+        cls.reference_dir = Path("bot/resources/reference")
         cls.debug_frames = {
             path.name: path for path in Path("debug_frames").glob("unknown-*.png")
         }
@@ -88,6 +89,87 @@ class DetectorTests(unittest.TestCase):
 
         self.assertGreaterEqual(s3a_score, 0.82)
         self.assertLessEqual(best_score - s3a_score, 0.03)
+
+    def test_runtime_empty_list_frame_stays_within_s3b_fast_path(self) -> None:
+        screenshots_root = Path(r"C:\Users\musiq\OneDrive")
+        screenshot_path = next(
+            path for path in screenshots_root.rglob("*.png") if "052737" in path.name
+        )
+        detection = self._detect(screenshot_path)
+        s3a_score = detection.scores[ScreenName.S3A_LIST_PRESENT.value]
+        s3b_score = detection.scores[ScreenName.S3B_LIST_EMPTY.value]
+        s7_score = detection.scores[ScreenName.S7_BUY_SUCCESS.value]
+
+        self.assertEqual(detection.screen, ScreenName.S3B_LIST_EMPTY)
+        self.assertGreaterEqual(s3b_score, 0.72)
+        self.assertLess(s3a_score, 0.72)
+        self.assertLess(s7_score, 0.90)
+
+    def test_runtime_sold_lot_frame_detects_s3c(self) -> None:
+        screenshots_root = Path(r"C:\Users\musiq\OneDrive")
+        screenshot_path = next(
+            path for path in screenshots_root.rglob("*.png") if "054647" in path.name
+        )
+        detection = self._detect(screenshot_path)
+
+        self.assertEqual(detection.screen, ScreenName.S3C_LIST_SOLD)
+        self.assertGreaterEqual(
+            detection.scores[ScreenName.S3C_LIST_SOLD.value],
+            self.detector._screen_threshold(ScreenName.S3C_LIST_SOLD),
+        )
+
+    def test_reference_lot_loading_frame_detects_expected_screen(self) -> None:
+        detection = self._detect(self.reference_dir / "4a. Загрузка описания аукциона.png")
+        self.assertEqual(detection.screen, ScreenName.S4_LOT_LOADING)
+        self.assertGreaterEqual(detection.score, detection.threshold)
+
+    def test_lot_open_phase_does_not_detect_loading_as_sold(self) -> None:
+        image = Image.open(next(self.reference_dir.glob("4a*.png"))).convert("RGB")
+        detection = self.detector.detect(
+            image,
+            candidates=(
+                ScreenName.S4_LOT_LOADING,
+                ScreenName.S4_LOT_DETAILS,
+                ScreenName.S3C_LIST_SOLD,
+            ),
+        )
+
+        self.assertEqual(detection.screen, ScreenName.S4_LOT_LOADING)
+        self.assertNotEqual(detection.screen, ScreenName.S3C_LIST_SOLD)
+
+    def test_runtime_transition_frame_does_not_remap_to_empty_or_sold(self) -> None:
+        detection = self._detect(
+            self.debug_frames["unknown-20260619-041247-420101.png"]
+        )
+        s3b_score = detection.scores[ScreenName.S3B_LIST_EMPTY.value]
+        s3c_score = detection.scores[ScreenName.S3C_LIST_SOLD.value]
+
+        self.assertLess(s3b_score, 0.85)
+        self.assertLess(
+            s3c_score,
+            self.detector._screen_threshold(ScreenName.S3C_LIST_SOLD),
+        )
+
+    def test_regular_list_frame_does_not_trigger_sold_badge(self) -> None:
+        image = Image.open(sorted(Path("assets").glob("*.png"))[2]).convert("RGB")
+        score = self.detector._score_sold_badge(_pil_to_bgr(image))
+        self.assertLess(score, 0.40)
+
+    def test_sold_badge_scores_strongly_in_list_thumbnail_region(self) -> None:
+        canvas = Image.new("RGB", (2048, 1152), (24, 24, 24))
+        sold_source = Image.open(
+            self.reference_dir / "sold_badge_source.png"
+        ).convert("RGB")
+        badge = sold_source.crop((24, 6, 252, 104))
+        overlay = badge.resize((170, 82), Image.Resampling.BILINEAR)
+        canvas.paste(overlay, (88, 184))
+
+        score = self.detector._score_sold_badge(_pil_to_bgr(canvas))
+
+        self.assertGreaterEqual(
+            score,
+            self.detector._screen_threshold(ScreenName.S3C_LIST_SOLD),
+        )
 
 
 if __name__ == "__main__":

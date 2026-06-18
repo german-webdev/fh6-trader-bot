@@ -8,6 +8,8 @@ class ScreenName(str, Enum):
     S2_SEARCH_CONFIRM = "s2_search_confirm"
     S3A_LIST_PRESENT = "s3a_list_present"
     S3B_LIST_EMPTY = "s3b_list_empty"
+    S3C_LIST_SOLD = "s3c_list_sold"
+    S4_LOT_LOADING = "s4_lot_loading"
     S4_LOT_DETAILS = "s4_lot_details"
     S5_BUY_CONFIRM = "s5_buy_confirm"
     S6_LOADER = "s6_loader"

@@ -17,6 +17,24 @@ class StateMachineTests(unittest.TestCase):
         decision = machine.handle(ScreenName.S4_LOT_DETAILS)
         self.assertEqual(decision.actions, ("down", "enter"))
 
+    def test_sold_lot_returns_to_search(self) -> None:
+        machine = AuctionStateMachine(fast_restart_search=True)
+        decision = machine.handle(ScreenName.S3C_LIST_SOLD)
+        self.assertEqual(decision.actions, ("esc",))
+
+    def test_sold_lot_after_buy_attempt_returns_to_search(self) -> None:
+        machine = AuctionStateMachine(fast_restart_search=True)
+        machine.awaiting_purchase_result = True
+        decision = machine.handle(ScreenName.S3C_LIST_SOLD)
+        self.assertEqual(decision.actions, ("esc",))
+        self.assertFalse(machine.awaiting_purchase_result)
+
+    def test_lot_loading_waits_for_details(self) -> None:
+        machine = AuctionStateMachine()
+        decision = machine.handle(ScreenName.S4_LOT_LOADING)
+        self.assertEqual(decision.status, "wait")
+        self.assertEqual(decision.actions, ())
+
     def test_success_stops_on_final_screen(self) -> None:
         machine = AuctionStateMachine()
         decision = machine.handle(ScreenName.S8_FINAL_SUCCESS)
@@ -26,9 +44,16 @@ class StateMachineTests(unittest.TestCase):
         machine = AuctionStateMachine()
         machine.handle(ScreenName.S5_BUY_CONFIRM)
         decision = machine.handle(ScreenName.S7_BUY_SUCCESS)
-        self.assertEqual(decision.actions, ("enter",))
-        self.assertTrue(decision.stop_after_actions)
+        self.assertEqual(decision.actions, ())
+        self.assertTrue(decision.stop)
         self.assertFalse(machine.awaiting_purchase_result)
+
+    def test_buy_confirmation_can_repeat_while_waiting_for_result(self) -> None:
+        machine = AuctionStateMachine()
+        machine.awaiting_purchase_result = True
+        decision = machine.handle(ScreenName.S5_BUY_CONFIRM)
+        self.assertEqual(decision.actions, ("enter",))
+        self.assertTrue(machine.awaiting_purchase_result)
 
     def test_non_success_after_loader_recovers(self) -> None:
         machine = AuctionStateMachine(fast_restart_search=True)

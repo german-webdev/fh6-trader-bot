@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
-from typing import Literal
+from typing import Iterable, Literal
 
 import cv2
 import numpy as np
@@ -171,47 +171,172 @@ PROFILES: tuple[ScreenProfile, ...] = (
         ),
     ),
     ScreenProfile(
+        screen=ScreenName.S4_LOT_LOADING,
+        filename="4a. Загрузка описания аукциона.png",
+        triggers=(
+            ScreenTrigger(
+                (0.400, 0.170, 0.850, 0.285),
+                weight=1.8,
+                min_score=0.83,
+                mode="accent",
+                search_radius=0.020,
+            ),
+            ScreenTrigger(
+                (0.410, 0.405, 0.805, 0.505),
+                weight=1.3,
+                min_score=0.76,
+                mode="text",
+                search_radius=0.025,
+            ),
+            ScreenTrigger(
+                (0.575, 0.600, 0.695, 0.760),
+                weight=1.0,
+                min_score=0.72,
+                mode="accent",
+                search_radius=0.025,
+            ),
+        ),
+    ),
+    ScreenProfile(
         screen=ScreenName.S4_LOT_DETAILS,
         filename="4. Экран с выбраной кнопкой выкупа.png",
         triggers=(
-            ScreenTrigger((0.03, 0.10, 0.24, 0.19), weight=1.2, min_score=0.88),
-            ScreenTrigger((0.03, 0.84, 0.22, 0.95), weight=2.0, min_score=0.90),
-            ScreenTrigger((0.03, 0.92, 0.22, 0.99), weight=1.0, min_score=0.86),
+            ScreenTrigger(
+                (0.040, 0.145, 0.345, 0.255),
+                weight=1.4,
+                min_score=0.84,
+                mode="text",
+                search_radius=0.022,
+            ),
+            ScreenTrigger(
+                (0.040, 0.245, 0.345, 0.335),
+                weight=1.2,
+                min_score=0.78,
+                mode="accent",
+                search_radius=0.025,
+            ),
+            ScreenTrigger(
+                (0.035, 0.835, 0.355, 0.995),
+                weight=2.5,
+                min_score=0.82,
+                mode="accent",
+                search_radius=0.025,
+            ),
         ),
     ),
     ScreenProfile(
         screen=ScreenName.S5_BUY_CONFIRM,
         filename="5. Экран подтверждения.png",
         triggers=(
-            ScreenTrigger((0.26, 0.32, 0.55, 0.40), weight=1.2, min_score=0.90),
-            ScreenTrigger((0.34, 0.40, 0.66, 0.48), weight=1.0, min_score=0.86),
-            ScreenTrigger((0.26, 0.48, 0.54, 0.59), weight=2.0, min_score=0.92),
+            ScreenTrigger(
+                (0.325, 0.420, 0.680, 0.530),
+                weight=1.8,
+                min_score=0.84,
+                mode="accent",
+                search_radius=0.018,
+            ),
+            ScreenTrigger(
+                (0.395, 0.535, 0.615, 0.605),
+                weight=1.0,
+                min_score=0.74,
+                mode="text",
+                search_radius=0.018,
+            ),
+            ScreenTrigger(
+                (0.325, 0.585, 0.685, 0.675),
+                weight=2.2,
+                min_score=0.82,
+                mode="accent",
+                search_radius=0.020,
+            ),
+            ScreenTrigger(
+                (0.350, 0.675, 0.685, 0.740),
+                weight=0.8,
+                min_score=0.76,
+                mode="hybrid",
+                search_radius=0.018,
+            ),
         ),
     ),
     ScreenProfile(
         screen=ScreenName.S6_LOADER,
         filename="6. Экран с лоадером.png",
         triggers=(
-            ScreenTrigger((0.26, 0.32, 0.55, 0.40), weight=1.0, min_score=0.88),
-            ScreenTrigger((0.32, 0.40, 0.67, 0.55), weight=2.1, min_score=0.90),
+            ScreenTrigger(
+                (0.325, 0.420, 0.680, 0.530),
+                weight=1.6,
+                min_score=0.84,
+                mode="accent",
+                search_radius=0.018,
+            ),
+            ScreenTrigger(
+                (0.400, 0.545, 0.625, 0.620),
+                weight=1.2,
+                min_score=0.72,
+                mode="text",
+                search_radius=0.018,
+            ),
+            ScreenTrigger(
+                (0.465, 0.600, 0.565, 0.765),
+                weight=1.3,
+                min_score=0.70,
+                mode="accent",
+                search_radius=0.025,
+            ),
         ),
     ),
     ScreenProfile(
         screen=ScreenName.S7_BUY_SUCCESS,
         filename="7. Экран успешного выкупа.png",
         triggers=(
-            ScreenTrigger((0.26, 0.34, 0.55, 0.42), weight=1.4, min_score=0.90),
-            ScreenTrigger((0.28, 0.41, 0.67, 0.56), weight=1.8, min_score=0.88),
-            ScreenTrigger((0.03, 0.95, 0.13, 0.99), weight=0.8, min_score=0.82),
+            ScreenTrigger(
+                (0.325, 0.445, 0.690, 0.555),
+                weight=1.8,
+                min_score=0.84,
+                mode="accent",
+                search_radius=0.018,
+            ),
+            ScreenTrigger(
+                (0.365, 0.545, 0.685, 0.665),
+                weight=1.2,
+                min_score=0.72,
+                mode="text",
+                search_radius=0.018,
+            ),
+            ScreenTrigger(
+                (0.000, 0.950, 0.120, 0.995),
+                weight=0.8,
+                min_score=0.78,
+                mode="accent",
+                search_radius=0.010,
+            ),
         ),
     ),
     ScreenProfile(
         screen=ScreenName.S8_FINAL_SUCCESS,
         filename="8. Финальный экран.png",
         triggers=(
-            ScreenTrigger((0.03, 0.10, 0.26, 0.19), weight=1.0, min_score=0.88),
-            ScreenTrigger((0.03, 0.26, 0.27, 0.41), weight=1.2, min_score=0.84),
-            ScreenTrigger((0.03, 0.81, 0.34, 0.96), weight=2.4, min_score=0.84),
+            ScreenTrigger(
+                (0.040, 0.145, 0.345, 0.255),
+                weight=1.0,
+                min_score=0.82,
+                mode="text",
+                search_radius=0.022,
+            ),
+            ScreenTrigger(
+                (0.040, 0.755, 0.290, 0.815),
+                weight=1.5,
+                min_score=0.76,
+                mode="accent",
+                search_radius=0.020,
+            ),
+            ScreenTrigger(
+                (0.035, 0.815, 0.310, 0.970),
+                weight=2.4,
+                min_score=0.80,
+                mode="accent",
+                search_radius=0.020,
+            ),
         ),
     ),
 )
@@ -242,16 +367,14 @@ def _crop_region(image: np.ndarray, region: Region) -> np.ndarray:
     return image[top:bottom, left:right]
 
 
-def _expand_region(region: Region, radius: float) -> Region:
-    if radius <= 0.0:
-        return region
-
-    return (
-        max(0.0, region[0] - radius),
-        max(0.0, region[1] - radius),
-        min(1.0, region[2] + radius),
-        min(1.0, region[3] + radius),
-    )
+def _crop_pixels(
+    image: np.ndarray,
+    left: int,
+    top: int,
+    right: int,
+    bottom: int,
+) -> np.ndarray:
+    return image[top:bottom, left:right]
 
 
 def _shift_region(region: Region, delta_x: float, delta_y: float) -> Region:
@@ -366,6 +489,18 @@ def _similarity(
     )
 
 
+def _template_match_score(search: np.ndarray, template: np.ndarray) -> float:
+    if (
+        search.shape[0] < template.shape[0]
+        or search.shape[1] < template.shape[1]
+        or template.size == 0
+    ):
+        return 0.0
+
+    result = cv2.matchTemplate(search, template, cv2.TM_CCOEFF_NORMED)
+    return max(0.0, min(1.0, float(result.max())))
+
+
 class ScreenDetector:
     def __init__(self, config: AppConfig) -> None:
         self.config = config
@@ -380,6 +515,13 @@ class ScreenDetector:
             profile.screen: self._prepare_profile(profile)
             for profile in PROFILES
         }
+
+        sold_source = _pil_to_bgr(
+            Image.open(base_dir / "sold_badge_source.png").convert("RGB")
+        )
+        sold_badge = _crop_pixels(sold_source, 24, 6, 252, 104)
+        self.sold_badge_template = _edges(_gray(sold_badge))
+        self.sold_badge_color_template = _normalize_color(sold_badge)
 
     def _prepare_profile(self, profile: ScreenProfile) -> tuple[PreparedTrigger, ...]:
         template = self.templates[profile.screen]
@@ -405,6 +547,17 @@ class ScreenDetector:
         return tuple(prepared)
 
     def _screen_threshold(self, screen: ScreenName) -> float:
+        if screen is ScreenName.S3C_LIST_SOLD:
+            return 0.56
+        if screen is ScreenName.S4_LOT_LOADING:
+            return 0.80
+        if screen in {
+            ScreenName.S4_LOT_DETAILS,
+            ScreenName.S5_BUY_CONFIRM,
+            ScreenName.S7_BUY_SUCCESS,
+            ScreenName.S8_FINAL_SUCCESS,
+        }:
+            return 0.80
         if screen is ScreenName.S6_LOADER:
             return self.config.detector.loader_match_threshold
         return self.config.detector.match_threshold
@@ -463,15 +616,207 @@ class ScreenDetector:
             )
         return (float(effective_score), all_required_triggers_matched)
 
-    def detect(self, image: Image.Image) -> DetectionResult:
+    def _score_sold_badge(self, image: np.ndarray) -> float:
+        search_regions: tuple[Region, ...] = (
+            (0.040, 0.165, 0.165, 0.305),
+        )
+        scales = (0.70, 0.82, 0.94, 1.06, 1.18)
+        best_score = 0.0
+
+        for region in search_regions:
+            search_crop = _crop_region(image, region)
+            search_edges = _edges(_gray(search_crop))
+            search_color = _normalize_color(search_crop)
+            search_gray = _gray(search_crop)
+            hsv = cv2.cvtColor(search_crop, cv2.COLOR_BGR2HSV)
+            yellow_mask = cv2.inRange(
+                hsv,
+                np.array([16, 110, 150], dtype=np.uint8),
+                np.array([42, 255, 255], dtype=np.uint8),
+            )
+            kernel = np.ones((5, 5), dtype=np.uint8)
+            yellow_mask = cv2.morphologyEx(yellow_mask, cv2.MORPH_CLOSE, kernel)
+            yellow_mask = cv2.morphologyEx(yellow_mask, cv2.MORPH_OPEN, kernel)
+
+            contours, _hierarchy = cv2.findContours(
+                yellow_mask,
+                cv2.RETR_EXTERNAL,
+                cv2.CHAIN_APPROX_SIMPLE,
+            )
+            crop_area = float(search_crop.shape[0] * search_crop.shape[1])
+            for contour in contours:
+                area = float(cv2.contourArea(contour))
+                if crop_area <= 0 or area / crop_area < 0.015:
+                    continue
+
+                rect = cv2.minAreaRect(contour)
+                width, height = rect[1]
+                if width < 1.0 or height < 1.0:
+                    continue
+
+                aspect_ratio = max(width, height) / min(width, height)
+                if aspect_ratio < 1.6 or aspect_ratio > 5.5:
+                    continue
+
+                angle = float(rect[2])
+                if width < height:
+                    angle += 90.0
+                normalized_angle = abs(angle)
+                if normalized_angle < 8.0 or normalized_angle > 35.0:
+                    continue
+
+                x, y, w, h = cv2.boundingRect(contour)
+                contour_mask = yellow_mask[y : y + h, x : x + w]
+                dark_pixels = np.count_nonzero(
+                    (search_gray[y : y + h, x : x + w] < 95) & (contour_mask > 0)
+                )
+                filled_pixels = max(1, np.count_nonzero(contour_mask))
+                dark_ratio = dark_pixels / filled_pixels
+                if dark_ratio < 0.06:
+                    continue
+
+                area_score = min(1.0, (area / crop_area) / 0.12)
+                ratio_score = min(1.0, aspect_ratio / 3.5)
+                dark_score = min(1.0, dark_ratio / 0.20)
+                angle_score = min(1.0, normalized_angle / 18.0)
+                best_score = max(
+                    best_score,
+                    (area_score * 0.35)
+                    + (ratio_score * 0.15)
+                    + (dark_score * 0.25)
+                    + (angle_score * 0.25),
+                )
+
+            for scale in scales:
+                width = max(24, int(round(self.sold_badge_template.shape[1] * scale)))
+                height = max(16, int(round(self.sold_badge_template.shape[0] * scale)))
+                edge_template = cv2.resize(
+                    self.sold_badge_template,
+                    (width, height),
+                    interpolation=cv2.INTER_LINEAR,
+                )
+                color_template = cv2.resize(
+                    self.sold_badge_color_template,
+                    (width, height),
+                    interpolation=cv2.INTER_LINEAR,
+                )
+                edge_score = _template_match_score(search_edges, edge_template)
+                color_score = _template_match_score(search_color, color_template)
+                best_score = max(
+                    best_score,
+                    (edge_score * 0.55) + (color_score * 0.45),
+                )
+
+        return best_score
+
+    def _score_empty_auction_message(self, image: np.ndarray) -> float:
+        search_crop = _crop_region(image, (0.550, 0.460, 0.910, 0.620))
+        gray = cv2.cvtColor(search_crop, cv2.COLOR_BGR2GRAY)
+        _threshold, white_mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+        kernel = np.ones((3, 3), dtype=np.uint8)
+        white_mask = cv2.morphologyEx(white_mask, cv2.MORPH_OPEN, kernel)
+
+        white_ratio = np.count_nonzero(white_mask) / max(1, white_mask.size)
+        contours, _hierarchy = cv2.findContours(
+            white_mask,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE,
+        )
+
+        character_boxes: list[tuple[int, int, int, int]] = []
+        for contour in contours:
+            x, y, width, height = cv2.boundingRect(contour)
+            area = cv2.contourArea(contour)
+            if area > 20 and 3 < width < 90 and 8 < height < 90:
+                character_boxes.append((x, y, width, height))
+
+        if not character_boxes:
+            return 0.0
+
+        centers_y = [y + (height / 2.0) for _x, y, _width, height in character_boxes]
+        line_histogram = np.histogram(
+            centers_y,
+            bins=8,
+            range=(0, search_crop.shape[0]),
+        )[0]
+        text_lines = sum(1 for value in line_histogram if value >= 4)
+
+        white_score = min(1.0, white_ratio / 0.08)
+        character_score = min(1.0, len(character_boxes) / 25.0)
+        line_score = 1.0 if text_lines >= 2 else 0.0
+
+        return float(
+            (white_score * 0.45)
+            + (character_score * 0.35)
+            + (line_score * 0.20)
+        )
+
+    def detect(
+        self,
+        image: Image.Image,
+        candidates: Iterable[ScreenName] | None = None,
+    ) -> DetectionResult:
         image_bgr = _pil_to_bgr(image)
         profile_scores: dict[str, float] = {}
         profile_matches: dict[str, bool] = {}
+        candidate_set = set(candidates) if candidates is not None else None
 
         for profile in PROFILES:
+            if candidate_set is not None and profile.screen not in candidate_set:
+                continue
+
             score, matched = self._score_profile(image_bgr, profile)
             profile_scores[profile.screen.value] = score
             profile_matches[profile.screen.value] = matched
+
+        should_score_empty_message = (
+            candidate_set is None or ScreenName.S3B_LIST_EMPTY in candidate_set
+        )
+        if should_score_empty_message:
+            empty_message_score = self._score_empty_auction_message(image_bgr)
+            current_score = profile_scores.get(ScreenName.S3B_LIST_EMPTY.value, 0.0)
+            profile_scores[ScreenName.S3B_LIST_EMPTY.value] = max(
+                current_score,
+                empty_message_score,
+            )
+            profile_matches[ScreenName.S3B_LIST_EMPTY.value] = (
+                profile_scores[ScreenName.S3B_LIST_EMPTY.value]
+                >= self._screen_threshold(ScreenName.S3B_LIST_EMPTY)
+            )
+
+        should_score_sold = (
+            candidate_set is None or ScreenName.S3C_LIST_SOLD in candidate_set
+        )
+        if should_score_sold:
+            sold_score = self._score_sold_badge(image_bgr)
+            list_score = profile_scores.get(ScreenName.S3A_LIST_PRESENT.value, 0.0)
+            profile_scores[ScreenName.S3C_LIST_SOLD.value] = sold_score
+            profile_matches[ScreenName.S3C_LIST_SOLD.value] = (
+                sold_score >= self._screen_threshold(ScreenName.S3C_LIST_SOLD)
+                and list_score >= 0.70
+            )
+
+            if sold_score >= self._screen_threshold(ScreenName.S3C_LIST_SOLD):
+                if list_score >= 0.70:
+                    return DetectionResult(
+                        screen=ScreenName.S3C_LIST_SOLD,
+                        score=float(sold_score),
+                        threshold=self._screen_threshold(ScreenName.S3C_LIST_SOLD),
+                        margin=max(
+                            self.config.detector.min_margin,
+                            float(sold_score - list_score),
+                        ),
+                        scores=profile_scores,
+                    )
+
+        if not profile_scores:
+            return DetectionResult(
+                screen=ScreenName.UNKNOWN,
+                score=0.0,
+                threshold=self.config.detector.match_threshold,
+                margin=0.0,
+                scores=profile_scores,
+            )
 
         ordered = sorted(profile_scores.items(), key=lambda item: item[1], reverse=True)
         best_screen_value, best_score = ordered[0]

@@ -31,9 +31,12 @@ class AuctionStateMachine:
             )
 
         if self.awaiting_purchase_result and screen not in {
+            ScreenName.S5_BUY_CONFIRM,
             ScreenName.S6_LOADER,
             ScreenName.S7_BUY_SUCCESS,
             ScreenName.S8_FINAL_SUCCESS,
+            ScreenName.S3B_LIST_EMPTY,
+            ScreenName.S3C_LIST_SOLD,
             ScreenName.UNKNOWN,
         }:
             self.awaiting_purchase_result = False
@@ -52,6 +55,14 @@ class AuctionStateMachine:
             return StepDecision(
                 status="wait",
                 message="Unknown result after loader, retrying detection.",
+            )
+
+        if self.awaiting_purchase_result and screen is ScreenName.S5_BUY_CONFIRM:
+            self.previous_screen = screen
+            return StepDecision(
+                status="advance",
+                message="Buy confirmation is still visible, confirming again.",
+                actions=("enter",),
             )
 
         if screen is ScreenName.S1_SEARCH_MENU:
@@ -80,10 +91,27 @@ class AuctionStateMachine:
 
         if screen is ScreenName.S3B_LIST_EMPTY:
             self.previous_screen = screen
+            self.awaiting_purchase_result = False
             return StepDecision(
                 status="advance",
                 message="Empty auction list detected, returning to search menu.",
                 actions=("esc",),
+            )
+
+        if screen is ScreenName.S3C_LIST_SOLD:
+            self.previous_screen = screen
+            self.awaiting_purchase_result = False
+            return StepDecision(
+                status="advance",
+                message="Sold lot detected in the auction list, returning to search menu.",
+                actions=("esc",),
+            )
+
+        if screen is ScreenName.S4_LOT_LOADING:
+            self.previous_screen = screen
+            return StepDecision(
+                status="wait",
+                message="Lot details are still loading.",
             )
 
         if screen is ScreenName.S4_LOT_DETAILS:
@@ -116,9 +144,8 @@ class AuctionStateMachine:
             self.awaiting_purchase_result = False
             return StepDecision(
                 status="success",
-                message="Successful buyout dialog detected, confirming purchase.",
-                actions=("enter",),
-                stop_after_actions=True,
+                message="Successful buyout detected. Bot stopped.",
+                stop=True,
             )
 
         return StepDecision(

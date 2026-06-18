@@ -52,6 +52,12 @@ class BotRuntime:
             return None, None
         return window, capture_window(window)
 
+    def _capture_cached_window_image(self, window):
+        try:
+            return capture_window(window)
+        except OSError:
+            return None
+
     def _best_candidate(
         self,
         scores: dict[str, float],
@@ -62,6 +68,7 @@ class BotRuntime:
     def _is_search_sequence(self, actions: tuple[str, ...]) -> bool:
         return actions in {
             ("enter", "esc", "esc"),
+            ("enter", "esc", "esc", "enter", "enter"),
         }
 
     def _search_phase_grace_seconds(self) -> float:
@@ -80,10 +87,74 @@ class BotRuntime:
         return 1.2
 
     def _buyout_confirm_phase_grace_seconds(self) -> float:
-        return 0.8
+        return 1.2
 
     def _purchase_result_grace_seconds(self) -> float:
         return 1.2
+
+    def _purchase_timeout_seconds(self) -> float:
+        return self.config.timings.purchase_timeout_ms / 1000.0
+
+    def _purchase_recovery_actions(self) -> tuple[str, ...]:
+        if self.config.flow.fast_restart_search:
+            return ("enter", "esc", "esc", "enter", "enter")
+        return ("enter", "esc", "esc")
+
+    def _detection_candidates(
+        self,
+        *,
+        machine: AuctionStateMachine,
+        search_phase_started_at: float | None,
+        search_confirm_phase_started_at: float | None,
+        search_menu_return_started_at: float | None,
+        lot_open_phase_started_at: float | None,
+        buyout_confirm_phase_started_at: float | None,
+    ) -> tuple[ScreenName, ...] | None:
+        if machine.awaiting_purchase_result:
+            return (
+                ScreenName.S5_BUY_CONFIRM,
+                ScreenName.S6_LOADER,
+                ScreenName.S7_BUY_SUCCESS,
+                ScreenName.S8_FINAL_SUCCESS,
+                ScreenName.S3B_LIST_EMPTY,
+                ScreenName.S3C_LIST_SOLD,
+            )
+
+        if buyout_confirm_phase_started_at is not None:
+            return (
+                ScreenName.S5_BUY_CONFIRM,
+                ScreenName.S6_LOADER,
+                ScreenName.S7_BUY_SUCCESS,
+                ScreenName.S3B_LIST_EMPTY,
+                ScreenName.S3C_LIST_SOLD,
+            )
+
+        if lot_open_phase_started_at is not None:
+            return (
+                ScreenName.S4_LOT_LOADING,
+                ScreenName.S4_LOT_DETAILS,
+            )
+
+        if search_phase_started_at is not None:
+            return (
+                ScreenName.S3A_LIST_PRESENT,
+                ScreenName.S3B_LIST_EMPTY,
+                ScreenName.S3C_LIST_SOLD,
+            )
+
+        if search_confirm_phase_started_at is not None:
+            return (
+                ScreenName.S1_SEARCH_MENU,
+                ScreenName.S2_SEARCH_CONFIRM,
+            )
+
+        if search_menu_return_started_at is not None:
+            return (
+                ScreenName.S1_SEARCH_MENU,
+                ScreenName.S2_SEARCH_CONFIRM,
+            )
+
+        return None
 
     def run(self, dry_run: bool = False) -> dict[str, Any]:
         window = find_window(self.config.window.title_contains)
@@ -113,6 +184,7 @@ class BotRuntime:
         search_menu_return_started_at: float | None = None
         lot_open_phase_started_at: float | None = None
         buyout_confirm_phase_started_at: float | None = None
+        buyout_confirm_fallback_used = False
         purchase_result_started_at: float | None = None
         self.logger.info("Runtime started")
         time.sleep(self.config.timings.startup_delay_ms / 1000.0)
@@ -153,8 +225,21 @@ class BotRuntime:
                 time.sleep(0.1)
                 continue
 
-            current_window, image = self._capture_window_image()
-            if current_window is None or image is None:
+            image = self._capture_cached_window_image(window)
+            if image is None:
+                refreshed_window = find_window(self.config.window.title_contains)
+                if refreshed_window is None:
+                    return self._run_result(
+                        status="not_found",
+                        screen=ScreenName.UNKNOWN,
+                        cycles=cycles,
+                        elapsed_seconds=time.monotonic() - start_time,
+                        message="Game window disappeared during runtime.",
+                    )
+                window = refreshed_window
+                image = self._capture_cached_window_image(window)
+
+            if image is None:
                 return self._run_result(
                     status="not_found",
                     screen=ScreenName.UNKNOWN,
@@ -163,7 +248,7 @@ class BotRuntime:
                     message="Game window disappeared during runtime.",
                 )
 
-            if not is_foreground_window(current_window.hwnd):
+            if not is_foreground_window(window.hwnd):
                 wait_message = "Game window is not active, waiting for focus."
                 if wait_message != last_wait_log:
                     self.logger.info(wait_message)
@@ -188,11 +273,26 @@ class BotRuntime:
                 time.sleep(self.config.timings.detect_interval_ms / 1000.0)
                 continue
 
-            detection = self.detector.detect(image)
+            detection = self.detector.detect(
+                image,
+                candidates=self._detection_candidates(
+                    machine=machine,
+                    search_phase_started_at=search_phase_started_at,
+                    search_confirm_phase_started_at=search_confirm_phase_started_at,
+                    search_menu_return_started_at=search_menu_return_started_at,
+                    lot_open_phase_started_at=lot_open_phase_started_at,
+                    buyout_confirm_phase_started_at=buyout_confirm_phase_started_at,
+                ),
+            )
             screen = detection.screen
             candidate_screen, candidate_score = self._best_candidate(detection.scores)
             s3a_score = detection.scores.get(ScreenName.S3A_LIST_PRESENT.value, 0.0)
             s3b_score = detection.scores.get(ScreenName.S3B_LIST_EMPTY.value, 0.0)
+            s3c_score = detection.scores.get(ScreenName.S3C_LIST_SOLD.value, 0.0)
+            s4_loading_score = detection.scores.get(
+                ScreenName.S4_LOT_LOADING.value,
+                0.0,
+            )
             s4_score = detection.scores.get(ScreenName.S4_LOT_DETAILS.value, 0.0)
             s5_score = detection.scores.get(ScreenName.S5_BUY_CONFIRM.value, 0.0)
             s1_score = detection.scores.get(ScreenName.S1_SEARCH_MENU.value, 0.0)
@@ -208,11 +308,11 @@ class BotRuntime:
                     time.monotonic() - search_menu_return_started_at
                 )
                 if search_menu_return_elapsed >= 0.20:
-                    if s1_score >= 0.78 and (candidate_score - s1_score) <= 0.10:
+                    if s1_score >= 0.70 and (candidate_score - s1_score) <= 0.12:
                         screen = ScreenName.S1_SEARCH_MENU
                     elif (
                         candidate_screen is ScreenName.S1_SEARCH_MENU
-                        and candidate_score >= 0.78
+                        and candidate_score >= 0.70
                     ):
                         screen = ScreenName.S1_SEARCH_MENU
 
@@ -229,6 +329,34 @@ class BotRuntime:
                         and candidate_score >= 0.74
                     ):
                         screen = ScreenName.S2_SEARCH_CONFIRM
+
+            if (
+                screen is ScreenName.UNKNOWN
+                and search_confirm_phase_started_at is not None
+            ):
+                search_confirm_elapsed = (
+                    time.monotonic() - search_confirm_phase_started_at
+                )
+                if (
+                    search_confirm_elapsed >= 0.45
+                    and s1_score >= 0.70
+                    and (candidate_score - s1_score) <= 0.12
+                ):
+                    self.logger.info(
+                        "screen=%s score=%.4f margin=%.4f status=retry actions=enter message=Search menu is still active, retrying saved search.",
+                        ScreenName.S1_SEARCH_MENU.value,
+                        s1_score,
+                        detection.margin,
+                    )
+                    if not dry_run:
+                        self.input.press_enter()
+                    search_confirm_phase_started_at = time.monotonic()
+                    unknown_grace_until = (
+                        search_confirm_phase_started_at
+                        + self._search_confirm_phase_grace_seconds()
+                    )
+                    time.sleep(self.config.timings.detect_interval_ms / 1000.0)
+                    continue
 
             if (
                 search_menu_return_started_at is not None
@@ -259,22 +387,42 @@ class BotRuntime:
                     "Search menu did not stabilize after empty list, forcing S1 retry"
                 )
                 screen = ScreenName.S1_SEARCH_MENU
+                search_menu_return_started_at = None
 
             if (
                 screen is ScreenName.UNKNOWN
                 and search_phase_started_at is not None
-                and (time.monotonic() - search_phase_started_at)
-                >= self._search_phase_grace_seconds()
             ):
-                if s3a_score >= 0.70 and (candidate_score - s3a_score) <= 0.03:
-                    screen = ScreenName.S3A_LIST_PRESENT
-                elif s3b_score >= 0.72 and (candidate_score - s3b_score) <= 0.03:
+                search_phase_elapsed = time.monotonic() - search_phase_started_at
+                if (
+                    search_phase_elapsed >= 0.18
+                    and s3b_score >= 0.74
+                    and s3a_score < 0.72
+                    and (candidate_score - s3b_score) <= 0.16
+                ):
                     screen = ScreenName.S3B_LIST_EMPTY
+                elif search_phase_elapsed >= 0.35:
+                    if (
+                        s3a_score >= 0.74
+                        and s3b_score < 0.74
+                        and (candidate_score - s3a_score) <= 0.06
+                    ):
+                        screen = ScreenName.S3A_LIST_PRESENT
+                    elif (
+                        s3b_score >= 0.72
+                        and s3a_score < 0.72
+                        and (candidate_score - s3b_score) <= 0.18
+                    ):
+                        screen = ScreenName.S3B_LIST_EMPTY
+                    elif s3c_score >= 0.56 and s3a_score >= 0.70:
+                        screen = ScreenName.S3C_LIST_SOLD
 
             if screen in {
                 ScreenName.S2_SEARCH_CONFIRM,
                 ScreenName.S3A_LIST_PRESENT,
                 ScreenName.S3B_LIST_EMPTY,
+                ScreenName.S3C_LIST_SOLD,
+                ScreenName.S4_LOT_LOADING,
                 ScreenName.S4_LOT_DETAILS,
             }:
                 search_phase_started_at = None
@@ -285,6 +433,8 @@ class BotRuntime:
                 and lot_open_phase_started_at is not None
             ):
                 lot_open_elapsed = time.monotonic() - lot_open_phase_started_at
+                if s4_loading_score >= 0.80 and (candidate_score - s4_loading_score) <= 0.08:
+                    screen = ScreenName.S4_LOT_LOADING
                 if lot_open_elapsed >= 0.65:
                     if s4_score >= 0.80 and (candidate_score - s4_score) <= 0.04:
                         screen = ScreenName.S4_LOT_DETAILS
@@ -330,16 +480,64 @@ class BotRuntime:
                     ):
                         screen = ScreenName.S5_BUY_CONFIRM
 
+                    if (
+                        screen is ScreenName.UNKNOWN
+                        and not buyout_confirm_fallback_used
+                        and buyout_confirm_elapsed >= 0.35
+                    ):
+                        self.logger.info(
+                            "screen=%s score=%.4f margin=%.4f status=trusted-confirm "
+                            "actions=enter message=Buy confirmation was not detected, "
+                            "confirming expected buyout dialog.",
+                            screen.value,
+                            detection.score,
+                            detection.margin,
+                        )
+                        if not dry_run:
+                            self.input.press_enter()
+                        machine.awaiting_purchase_result = True
+                        buyout_confirm_fallback_used = True
+                        buyout_confirm_phase_started_at = None
+                        purchase_result_started_at = time.monotonic()
+                        unknown_grace_until = (
+                            purchase_result_started_at
+                            + self._purchase_timeout_seconds()
+                        )
+                        time.sleep(
+                            self.config.timings.detect_interval_ms / 1000.0
+                        )
+                        continue
+
             if screen is ScreenName.UNKNOWN and machine.awaiting_purchase_result:
                 purchase_result_elapsed = (
                     0.0
                     if purchase_result_started_at is None
                     else (time.monotonic() - purchase_result_started_at)
                 )
+                if (
+                    (s3b_score >= 0.72 or s3c_score >= 0.56)
+                    and s7_score < 0.90
+                ):
+                    machine.awaiting_purchase_result = False
+                    screen = (
+                        ScreenName.S3C_LIST_SOLD
+                        if s3c_score >= 0.56
+                        else ScreenName.S3B_LIST_EMPTY
+                    )
+                    purchase_result_started_at = None
+                    loader_started_at = None
                 if purchase_result_elapsed >= 0.9:
-                    if s7_score >= 0.75 and (candidate_score - s7_score) <= 0.08:
+                    if (
+                        screen is ScreenName.UNKNOWN
+                        and s7_score >= 0.86
+                        and (candidate_score - s7_score) <= 0.08
+                    ):
                         screen = ScreenName.S7_BUY_SUCCESS
-                    elif s8_score >= 0.77 and (candidate_score - s8_score) <= 0.09:
+                    elif (
+                        screen is ScreenName.UNKNOWN
+                        and s8_score >= 0.82
+                        and (candidate_score - s8_score) <= 0.09
+                    ):
                         screen = ScreenName.S8_FINAL_SUCCESS
 
                 if (
@@ -357,6 +555,30 @@ class BotRuntime:
                 ScreenName.S8_FINAL_SUCCESS,
             }:
                 buyout_confirm_phase_started_at = None
+                buyout_confirm_fallback_used = False
+
+            if (
+                machine.awaiting_purchase_result
+                and (s3b_score >= 0.72 or s3c_score >= 0.56)
+                and (
+                    screen in {ScreenName.S3B_LIST_EMPTY, ScreenName.S3C_LIST_SOLD}
+                    or (
+                        screen is ScreenName.S7_BUY_SUCCESS
+                        and s7_score < 0.90
+                    )
+                )
+            ):
+                self.logger.warning(
+                    "Post-buy success was rejected because search list is visible"
+                )
+                machine.awaiting_purchase_result = False
+                screen = (
+                    ScreenName.S3C_LIST_SOLD
+                    if s3c_score >= 0.56
+                    else ScreenName.S3B_LIST_EMPTY
+                )
+                purchase_result_started_at = None
+                loader_started_at = None
 
             if not bootstrapped:
                 start_ready = screen is ScreenName.S1_SEARCH_MENU or (
@@ -403,22 +625,62 @@ class BotRuntime:
                         Path(self.config.debug.output_dir)
                         / f"unknown-{timestamp}.png",
                     )
-                if unknown_count >= self.config.detector.unknown_limit:
-                    self.logger.error("Too many unknown detections")
-                    return self._run_result(
-                        status="error",
-                        screen=screen,
-                        cycles=cycles,
-                        elapsed_seconds=time.monotonic() - start_time,
-                        message="Too many unknown detections.",
-                        score=detection.score,
+                if (
+                    unknown_count >= self.config.detector.unknown_limit
+                    and search_phase_started_at is not None
+                ):
+                    self.logger.warning(
+                        "Search result was not detected, returning to search menu"
                     )
+                    if not dry_run:
+                        self.input.press_escape()
+                    search_phase_started_at = None
+                    search_confirm_phase_started_at = None
+                    search_menu_return_started_at = time.monotonic()
+                    unknown_grace_until = (
+                        search_menu_return_started_at
+                        + self._search_menu_return_grace_seconds()
+                    )
+                    unknown_count = 0
+                    time.sleep(self.config.timings.detect_interval_ms / 1000.0)
+                    continue
+                if (
+                    unknown_count >= self.config.detector.unknown_limit
+                    and not machine.awaiting_purchase_result
+                ):
+                    self.logger.warning(
+                        "Unknown limit reached, trying to recover to search menu"
+                    )
+                    recovery_started_at = time.monotonic()
+                    if search_confirm_phase_started_at is not None:
+                        if not dry_run:
+                            self.input.press_enter()
+                        search_confirm_phase_started_at = recovery_started_at
+                        unknown_grace_until = (
+                            recovery_started_at
+                            + self._search_confirm_phase_grace_seconds()
+                        )
+                    else:
+                        if not dry_run:
+                            self.input.press_escape()
+                        search_phase_started_at = None
+                        search_confirm_phase_started_at = None
+                        search_menu_return_started_at = recovery_started_at
+                        unknown_grace_until = (
+                            recovery_started_at
+                            + self._search_menu_return_grace_seconds()
+                        )
+                    unknown_count = 0
+                    time.sleep(self.config.timings.detect_interval_ms / 1000.0)
+                    continue
             else:
                 unknown_count = 0
                 purchase_unknown_count = 0
 
             if screen is ScreenName.S6_LOADER and loader_started_at is None:
                 loader_started_at = time.monotonic()
+                if purchase_result_started_at is None:
+                    purchase_result_started_at = loader_started_at
             elif screen is not ScreenName.S6_LOADER:
                 loader_started_at = None
 
@@ -430,27 +692,33 @@ class BotRuntime:
 
             if (
                 machine.awaiting_purchase_result
-                and purchase_unknown_count >= 2
                 and purchase_result_started_at is not None
                 and (time.monotonic() - purchase_result_started_at)
-                >= self._purchase_result_grace_seconds()
+                >= self._purchase_timeout_seconds()
             ):
                 self.logger.warning(
-                    "Unknown post-loader result detected, running recovery sequence"
+                    "Buyout result was not successful within timeout, running recovery sequence"
                 )
-                self._execute_actions(
-                    (
-                        ("enter", "esc", "esc", "enter", "enter")
-                        if self.config.flow.fast_restart_search
-                        else ("enter", "esc", "esc")
+                self._execute_actions(self._purchase_recovery_actions())
+                machine.awaiting_purchase_result = False
+                recovery_started_at = time.monotonic()
+                search_confirm_phase_started_at = None
+                search_menu_return_started_at = None
+                if self.config.flow.fast_restart_search:
+                    search_phase_started_at = recovery_started_at
+                    unknown_grace_until = (
+                        recovery_started_at + self._search_phase_grace_seconds()
                     )
-                )
-                search_phase_started_at = time.monotonic()
-                unknown_grace_until = (
-                    search_phase_started_at + self._search_phase_grace_seconds()
-                )
+                else:
+                    search_phase_started_at = None
+                    search_menu_return_started_at = recovery_started_at
+                    unknown_grace_until = (
+                        recovery_started_at + self._search_menu_return_grace_seconds()
+                    )
+                unknown_count = 0
                 purchase_unknown_count = 0
                 purchase_result_started_at = None
+                loader_started_at = None
                 time.sleep(self.config.timings.detect_interval_ms / 1000.0)
                 continue
 
@@ -460,17 +728,24 @@ class BotRuntime:
                 >= self.config.timings.purchase_timeout_ms
             ):
                 self.logger.warning("Loader timed out, running recovery sequence")
-                self._execute_actions(
-                    (
-                        ("enter", "esc", "esc", "enter", "enter")
-                        if self.config.flow.fast_restart_search
-                        else ("enter", "esc", "esc")
+                self._execute_actions(self._purchase_recovery_actions())
+                machine.awaiting_purchase_result = False
+                recovery_started_at = time.monotonic()
+                search_confirm_phase_started_at = None
+                search_menu_return_started_at = None
+                if self.config.flow.fast_restart_search:
+                    search_phase_started_at = recovery_started_at
+                    unknown_grace_until = (
+                        recovery_started_at + self._search_phase_grace_seconds()
                     )
-                )
-                search_phase_started_at = time.monotonic()
-                unknown_grace_until = (
-                    search_phase_started_at + self._search_phase_grace_seconds()
-                )
+                else:
+                    search_phase_started_at = None
+                    search_menu_return_started_at = recovery_started_at
+                    unknown_grace_until = (
+                        recovery_started_at + self._search_menu_return_grace_seconds()
+                    )
+                unknown_count = 0
+                purchase_unknown_count = 0
                 loader_started_at = None
                 purchase_result_started_at = None
                 time.sleep(self.config.timings.detect_interval_ms / 1000.0)
@@ -504,7 +779,7 @@ class BotRuntime:
             if screen is ScreenName.S5_BUY_CONFIRM and decision.actions == ("enter",):
                 purchase_result_started_at = time.monotonic()
                 unknown_grace_until = (
-                    purchase_result_started_at + self._purchase_result_grace_seconds()
+                    purchase_result_started_at + self._purchase_timeout_seconds()
                 )
 
             if not dry_run:
@@ -528,6 +803,13 @@ class BotRuntime:
                     unknown_grace_until = (
                         time.monotonic() + self._search_menu_return_grace_seconds()
                     )
+                elif screen is ScreenName.S3C_LIST_SOLD and decision.actions == ("esc",):
+                    search_phase_started_at = None
+                    search_confirm_phase_started_at = None
+                    search_menu_return_started_at = time.monotonic()
+                    unknown_grace_until = (
+                        time.monotonic() + self._search_menu_return_grace_seconds()
+                    )
                 elif self._is_search_sequence(decision.actions):
                     search_phase_started_at = time.monotonic()
                     unknown_grace_until = (
@@ -540,6 +822,7 @@ class BotRuntime:
                     )
                 elif screen is ScreenName.S4_LOT_DETAILS and decision.actions == ("down", "enter"):
                     buyout_confirm_phase_started_at = time.monotonic()
+                    buyout_confirm_fallback_used = False
                     unknown_grace_until = (
                         buyout_confirm_phase_started_at
                         + self._buyout_confirm_phase_grace_seconds()
