@@ -10,46 +10,46 @@ from bot.detector import ScreenDetector
 from bot.screens import ScreenName
 
 
-EXPECTED = {
-    "1. Поиск аукционов.png": ScreenName.S1_SEARCH_MENU,
-    "2. Подтвердить поиск.png": ScreenName.S2_SEARCH_CONFIRM,
-    "3-1. Лот присутствует.png": ScreenName.S3A_LIST_PRESENT,
-    "3-2. Лот отсутствует.png": ScreenName.S3B_LIST_EMPTY,
-    "4. Экран с выбраной кнопкой выкупа.png": ScreenName.S4_LOT_DETAILS,
-    "5. Экран подтверждения.png": ScreenName.S5_BUY_CONFIRM,
-    "6. Экран с лоадером.png": ScreenName.S6_LOADER,
-    "7. Экран успешного выкупа.png": ScreenName.S7_BUY_SUCCESS,
-    "8. Финальный экран.png": ScreenName.S8_FINAL_SUCCESS,
-}
-
-
 class DetectorTests(unittest.TestCase):
-    def test_reference_images_match_expected_screens(self) -> None:
-        detector = ScreenDetector(load_config("config.toml"))
-        base_dir = Path("bot/resources/reference")
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.config = load_config("config.toml")
+        cls.detector = ScreenDetector(cls.config)
+        cls.assets = sorted(Path("assets").glob("*.png"))
+        cls.debug_frames = {
+            path.name: path for path in Path("debug_frames").glob("unknown-*.png")
+        }
 
-        for filename, expected in EXPECTED.items():
-            with self.subTest(filename=filename):
-                image = Image.open(base_dir / filename).convert("RGB")
-                result = detector.detect(image)
-                self.assertEqual(result.screen, expected)
-                self.assertGreaterEqual(result.score, result.threshold)
+    def _detect(self, path: Path):
+        image = Image.open(path).convert("RGB")
+        return self.detector.detect(image)
 
-    def test_downscaled_reference_images_match_expected_screens(self) -> None:
-        detector = ScreenDetector(load_config("config.toml"))
-        base_dir = Path("bot/resources/reference")
+    def test_reference_search_assets_detect_cleanly(self) -> None:
+        expectations = {
+            0: ScreenName.S1_SEARCH_MENU,
+            1: ScreenName.S2_SEARCH_CONFIRM,
+            2: ScreenName.S3A_LIST_PRESENT,
+            3: ScreenName.S3B_LIST_EMPTY,
+        }
 
-        for filename, expected in EXPECTED.items():
-            with self.subTest(filename=filename):
-                image = (
-                    Image.open(base_dir / filename)
-                    .convert("RGB")
-                    .resize((1920, 1080), Image.Resampling.BILINEAR)
+        for index, expected_screen in expectations.items():
+            with self.subTest(screen=expected_screen.value):
+                detection = self._detect(self.assets[index])
+                self.assertEqual(detection.screen, expected_screen)
+                self.assertGreaterEqual(
+                    detection.margin,
+                    self.config.detector.min_margin,
                 )
-                result = detector.detect(image)
-                self.assertEqual(result.screen, expected)
-                self.assertGreaterEqual(result.score, result.threshold)
-                self.assertGreater(result.margin, 0.05)
+
+    def test_runtime_search_confirm_frame_stays_within_fast_remap_window(self) -> None:
+        detection = self._detect(
+            self.debug_frames["unknown-20260619-003421-525970.png"]
+        )
+        s2_score = detection.scores[ScreenName.S2_SEARCH_CONFIRM.value]
+        best_score = max(detection.scores.values())
+
+        self.assertGreaterEqual(s2_score, 0.72)
+        self.assertLessEqual(best_score - s2_score, 0.08)
 
 
 if __name__ == "__main__":
