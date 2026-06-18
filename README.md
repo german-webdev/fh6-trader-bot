@@ -1,49 +1,112 @@
-# Trade Bot
+# FH6 Trader Bot
 
-Desktop-бот для Windows, который управляет внутриигровым аукционом по экранным триггерам и автоматизирует цикл поиска и мгновенного выкупа подходящего лота.
+Desktop bot for Windows that automates the in-game auction loop by recognizing game screens and sending keyboard input for search, lot opening, buyout confirmation, and retry flow recovery.
 
-## Что делает бот
+## Features
 
-- определяет текущее состояние экрана игры;
-- запускает поиск лотов по уже сохраненным параметрам;
-- повторяет цикл поиска, если список пуст;
-- открывает найденный лот;
-- переходит к выкупу и подтверждает покупку;
-- завершает работу после успешного результата.
+- detects the current auction screen from built-in reference images;
+- repeats the search loop when the lot list is empty;
+- opens the first detected lot;
+- moves from bid to buyout and confirms the purchase;
+- waits for the final success screen and stops there;
+- recovers back to the start of the search flow if the buyout fails.
 
-## Как управлять
-
-Планируемый интерфейс управления:
-
-- запуск через CLI;
-- проверка распознавания текущего экрана;
-- сохранение debug-кадра;
-- горячие клавиши для старта, паузы и остановки.
-
-Базовые команды:
+## Commands
 
 ```bash
 python -m bot run
+python -m bot run --dry-run
 python -m bot detect
+python -m bot detect --image "bot/resources/reference/1. Поиск аукционов.png"
 python -m bot debug-shot
 python -m bot check-window
 ```
 
-Базовая конфигурация хранится в [`config.toml`](</C:/Users/musiq/OneDrive/Документы/trade-bot/config.toml>).
+`config.toml` contains the base runtime configuration.
 
-Горячие клавиши:
+## Runtime Hotkeys
 
-- `F6` — старт
-- `F7` — пауза / продолжить
-- `F8` — остановка
+- `F6` resume
+- `F7` pause or resume
+- `F8` stop
 
-## Требования
+## Requirements
 
 - Windows 11
 - Python 3.12+
-- игра запущена локально
-- фиксированное разрешение и стабильный интерфейс игры
+- fixed game resolution and stable UI scale
+- the game window title must contain the value configured in `window.title_contains`
 
-## Статус
+## Setup
 
-Репозиторий предназначен для исходного кода и файлов, необходимых для сборки и запуска бота. Внутренние рабочие материалы, reference-скриншоты и вспомогательная документация в публичный состав проекта не входят.
+1. Install Python 3.12.
+2. Install dependencies:
+
+```bash
+py -3.12 -m pip install -r requirements.txt
+```
+
+3. Open the game and move it to the auction search start screen.
+4. Validate the game window:
+
+```bash
+py -3.12 -m bot check-window
+```
+
+5. Run a safe detection pass:
+
+```bash
+py -3.12 -m bot detect
+```
+
+6. Run a safe dry run:
+
+```bash
+py -3.12 -m bot run --dry-run
+```
+
+7. Start the live bot:
+
+```bash
+py -3.12 -m bot run
+```
+
+## Build Release Bundle
+
+Create a distributable release archive:
+
+```bash
+py -3.12 scripts/build_release.py
+```
+
+Or on Windows:
+
+```bat
+build_release.bat
+```
+
+The build step creates:
+
+- `dist/fh6-trader-bot/`
+- `dist/fh6-trader-bot-release.zip`
+
+## Build Standalone Windows Package
+
+If `PyInstaller` is available locally, build a standalone package with:
+
+```bat
+build_standalone.bat
+```
+
+The standalone build is written to:
+
+- `dist/standalone/fh6-trader-bot/`
+
+## Logging
+
+- runtime log: `logs/session.log`
+- debug screenshots: `debug_frames/`
+
+## Repository Scope
+
+This repository contains the source code, runtime reference assets required for screen detection, and release build files required to package and run the bot.
