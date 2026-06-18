@@ -71,15 +71,20 @@ class BotRuntime:
         # and only rely on recognition once the auction results screen appears.
         self.input.press_enter()
         self.input.press_enter()
-        self.input.press_enter()
+
+    def _execute_empty_list_restart_sequence(self) -> None:
+        self.input.press_escape()
+        # Returning from S3B to S1 has a short transition; if we re-open the
+        # search immediately, the game can drop the Enter presses.
+        time.sleep(0.35)
+        self._execute_search_open_sequence()
 
     def _execute_flow_actions(self, actions: tuple[str, ...]) -> None:
         if actions == ("enter", "enter"):
             self._execute_search_open_sequence()
             return
         if actions == ("esc", "enter", "enter"):
-            self.input.press_escape()
-            self._execute_search_open_sequence()
+            self._execute_empty_list_restart_sequence()
             return
         if actions == ("enter", "esc", "esc", "enter", "enter"):
             self.input.press_enter()
