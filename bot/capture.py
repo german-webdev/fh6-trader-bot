@@ -17,3 +17,10 @@ def save_window_capture(window: WindowInfo, output_path: str | Path) -> Path:
     image = capture_window(window)
     image.save(path)
     return path
+
+
+def save_image(image, output_path: str | Path) -> Path:
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(path)
+    return path

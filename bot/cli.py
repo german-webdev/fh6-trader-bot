@@ -26,8 +26,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("run", help="Start the bot runtime.")
-    subparsers.add_parser("detect", help="Detect the current screen state.")
+    run_parser = subparsers.add_parser("run", help="Start the bot runtime.")
+    run_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Evaluate flow without sending key presses.",
+    )
+    detect_parser = subparsers.add_parser("detect", help="Detect the current screen state.")
+    detect_parser.add_argument(
+        "--image",
+        help="Optional path to a PNG file for offline screen detection.",
+    )
     subparsers.add_parser("check-window", help="Validate game window settings.")
     subparsers.add_parser("debug-shot", help="Save a debug placeholder artifact.")
 
@@ -50,11 +59,11 @@ def main(argv: list[str] | None = None) -> int:
     runtime = _load_runtime(str(config_path))
 
     if args.command == "run":
-        _print_json(runtime.run())
+        _print_json(runtime.run(dry_run=args.dry_run))
         return 0
 
     if args.command == "detect":
-        _print_json(runtime.detect())
+        _print_json(runtime.detect(image_path=args.image))
         return 0
 
     if args.command == "check-window":
