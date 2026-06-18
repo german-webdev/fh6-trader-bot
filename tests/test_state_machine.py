@@ -22,6 +22,14 @@ class StateMachineTests(unittest.TestCase):
         decision = machine.handle(ScreenName.S8_FINAL_SUCCESS)
         self.assertTrue(decision.stop)
 
+    def test_success_dialog_confirms_and_stops(self) -> None:
+        machine = AuctionStateMachine()
+        machine.handle(ScreenName.S5_BUY_CONFIRM)
+        decision = machine.handle(ScreenName.S7_BUY_SUCCESS)
+        self.assertEqual(decision.actions, ("enter",))
+        self.assertTrue(decision.stop_after_actions)
+        self.assertFalse(machine.awaiting_purchase_result)
+
     def test_non_success_after_loader_recovers(self) -> None:
         machine = AuctionStateMachine(fast_restart_search=True)
         machine.handle(ScreenName.S5_BUY_CONFIRM)

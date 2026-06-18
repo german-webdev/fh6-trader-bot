@@ -75,6 +75,9 @@ class BotRuntime:
     def _buyout_confirm_phase_grace_seconds(self) -> float:
         return 2.2
 
+    def _purchase_result_grace_seconds(self) -> float:
+        return 1.8
+
     def run(self, dry_run: bool = False) -> dict[str, Any]:
         window = find_window(self.config.window.title_contains)
         if window is None:
@@ -102,6 +105,7 @@ class BotRuntime:
         search_phase_started_at: float | None = None
         lot_open_phase_started_at: float | None = None
         buyout_confirm_phase_started_at: float | None = None
+        purchase_result_started_at: float | None = None
         self.logger.info("Runtime started")
         time.sleep(self.config.timings.startup_delay_ms / 1000.0)
 
@@ -182,6 +186,8 @@ class BotRuntime:
             s3b_score = detection.scores.get(ScreenName.S3B_LIST_EMPTY.value, 0.0)
             s4_score = detection.scores.get(ScreenName.S4_LOT_DETAILS.value, 0.0)
             s5_score = detection.scores.get(ScreenName.S5_BUY_CONFIRM.value, 0.0)
+            s7_score = detection.scores.get(ScreenName.S7_BUY_SUCCESS.value, 0.0)
+            s8_score = detection.scores.get(ScreenName.S8_FINAL_SUCCESS.value, 0.0)
 
             if (
                 screen is ScreenName.UNKNOWN
@@ -233,6 +239,26 @@ class BotRuntime:
                     and candidate_score >= 0.82
                 ):
                     screen = ScreenName.S5_BUY_CONFIRM
+
+            if screen is ScreenName.UNKNOWN and machine.awaiting_purchase_result:
+                purchase_result_elapsed = (
+                    0.0
+                    if purchase_result_started_at is None
+                    else (time.monotonic() - purchase_result_started_at)
+                )
+                if purchase_result_elapsed >= 0.9:
+                    if s7_score >= 0.76 and (candidate_score - s7_score) <= 0.06:
+                        screen = ScreenName.S7_BUY_SUCCESS
+                    elif s8_score >= 0.77 and (candidate_score - s8_score) <= 0.08:
+                        screen = ScreenName.S8_FINAL_SUCCESS
+
+                if (
+                    screen is ScreenName.UNKNOWN
+                    and candidate_screen is ScreenName.S6_LOADER
+                    and candidate_score
+                    >= (self.config.detector.loader_match_threshold - 0.04)
+                ):
+                    screen = ScreenName.S6_LOADER
 
             if screen in {
                 ScreenName.S5_BUY_CONFIRM,
@@ -314,7 +340,19 @@ class BotRuntime:
             elif screen is not ScreenName.S6_LOADER:
                 loader_started_at = None
 
-            if machine.awaiting_purchase_result and purchase_unknown_count >= 2:
+            if screen in {
+                ScreenName.S7_BUY_SUCCESS,
+                ScreenName.S8_FINAL_SUCCESS,
+            }:
+                purchase_result_started_at = None
+
+            if (
+                machine.awaiting_purchase_result
+                and purchase_unknown_count >= 2
+                and purchase_result_started_at is not None
+                and (time.monotonic() - purchase_result_started_at)
+                >= self._purchase_result_grace_seconds()
+            ):
                 self.logger.warning(
                     "Unknown post-loader result detected, running recovery sequence"
                 )
@@ -330,6 +368,7 @@ class BotRuntime:
                     search_phase_started_at + self._search_phase_grace_seconds()
                 )
                 purchase_unknown_count = 0
+                purchase_result_started_at = None
                 time.sleep(self.config.timings.detect_interval_ms / 1000.0)
                 continue
 
@@ -351,6 +390,7 @@ class BotRuntime:
                     search_phase_started_at + self._search_phase_grace_seconds()
                 )
                 loader_started_at = None
+                purchase_result_started_at = None
                 time.sleep(self.config.timings.detect_interval_ms / 1000.0)
                 continue
 
@@ -380,7 +420,7 @@ class BotRuntime:
                 decision.message,
             )
 
-            if decision.stop:
+            if decision.stop and not decision.actions:
                 return self._run_result(
                     status=decision.status,
                     screen=screen,
@@ -393,6 +433,12 @@ class BotRuntime:
             if not decision.actions:
                 time.sleep(self.config.timings.detect_interval_ms / 1000.0)
                 continue
+
+            if screen is ScreenName.S5_BUY_CONFIRM and decision.actions == ("enter",):
+                purchase_result_started_at = time.monotonic()
+                unknown_grace_until = (
+                    purchase_result_started_at + self._purchase_result_grace_seconds()
+                )
 
             if not dry_run:
                 self._execute_actions(decision.actions)
@@ -412,6 +458,16 @@ class BotRuntime:
                         buyout_confirm_phase_started_at
                         + self._buyout_confirm_phase_grace_seconds()
                     )
+
+            if decision.stop_after_actions:
+                return self._run_result(
+                    status=decision.status,
+                    screen=screen,
+                    cycles=cycles,
+                    elapsed_seconds=time.monotonic() - start_time,
+                    message=decision.message,
+                    score=detection.score,
+                )
 
             time.sleep(self.config.timings.detect_interval_ms / 1000.0)
 

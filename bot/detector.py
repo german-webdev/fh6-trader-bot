@@ -118,9 +118,9 @@ PROFILES: tuple[ScreenProfile, ...] = (
         screen=ScreenName.S8_FINAL_SUCCESS,
         filename="8. Финальный экран.png",
         triggers=(
-            ScreenTrigger((0.03, 0.76, 0.26, 0.84), weight=1.5, min_score=0.90),
-            ScreenTrigger((0.03, 0.84, 0.22, 0.95), weight=2.0, min_score=0.90),
-            ScreenTrigger((0.03, 0.92, 0.22, 0.99), weight=0.8, min_score=0.84),
+            ScreenTrigger((0.03, 0.10, 0.26, 0.19), weight=1.0, min_score=0.88),
+            ScreenTrigger((0.03, 0.26, 0.27, 0.41), weight=1.2, min_score=0.84),
+            ScreenTrigger((0.03, 0.81, 0.34, 0.96), weight=2.4, min_score=0.84),
         ),
     ),
 )

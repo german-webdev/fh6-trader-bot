@@ -11,6 +11,7 @@ class StepDecision:
     message: str
     actions: tuple[str, ...] = ()
     stop: bool = False
+    stop_after_actions: bool = False
 
 
 class AuctionStateMachine:
@@ -116,10 +117,12 @@ class AuctionStateMachine:
 
         if screen is ScreenName.S7_BUY_SUCCESS:
             self.previous_screen = screen
+            self.awaiting_purchase_result = False
             return StepDecision(
-                status="advance",
-                message="Intermediate success dialog detected.",
+                status="success",
+                message="Successful buyout dialog detected, confirming purchase.",
                 actions=("enter",),
+                stop_after_actions=True,
             )
 
         return StepDecision(
