@@ -59,7 +59,7 @@ class AuctionStateMachine:
             return StepDecision(
                 status="advance",
                 message="Search menu detected.",
-                actions=("enter", "enter"),
+                actions=("enter",),
             )
 
         if screen is ScreenName.S2_SEARCH_CONFIRM:
@@ -83,11 +83,7 @@ class AuctionStateMachine:
             return StepDecision(
                 status="advance",
                 message="Empty auction list detected, returning to search menu.",
-                actions=(
-                    ("esc", "enter", "enter")
-                    if self.fast_restart_search
-                    else ("esc",)
-                ),
+                actions=("esc",),
             )
 
         if screen is ScreenName.S4_LOT_DETAILS:

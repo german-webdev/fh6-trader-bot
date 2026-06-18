@@ -61,45 +61,14 @@ class BotRuntime:
 
     def _is_search_sequence(self, actions: tuple[str, ...]) -> bool:
         return actions in {
-            ("enter", "enter"),
-            ("esc", "enter", "enter"),
-            ("enter", "esc", "esc", "enter", "enter"),
+            ("enter", "esc", "esc"),
         }
-
-    def _execute_search_open_sequence(self) -> None:
-        # S1 and S2 are deterministic, so we can drive through them blindly
-        # and only rely on recognition once the auction results screen appears.
-        self.input.press_enter()
-        self.input.press_enter()
-        # The search-confirm screen appears with a short transition; without a
-        # tiny settle time the last Enter can land too early and get ignored.
-        time.sleep(0.28)
-        self.input.press_enter()
-
-    def _execute_empty_list_restart_sequence(self) -> None:
-        self.input.press_escape()
-        # Returning from S3B to S1 has a short transition; if we re-open the
-        # search immediately, the game can drop the Enter presses.
-        time.sleep(0.35)
-        self._execute_search_open_sequence()
-
-    def _execute_flow_actions(self, actions: tuple[str, ...]) -> None:
-        if actions == ("enter", "enter"):
-            self._execute_search_open_sequence()
-            return
-        if actions == ("esc", "enter", "enter"):
-            self._execute_empty_list_restart_sequence()
-            return
-        if actions == ("enter", "esc", "esc", "enter", "enter"):
-            self.input.press_enter()
-            self.input.press_escape()
-            self.input.press_escape()
-            self._execute_search_open_sequence()
-            return
-        self._execute_actions(actions)
 
     def _search_phase_grace_seconds(self) -> float:
         return 1.4
+
+    def _search_confirm_phase_grace_seconds(self) -> float:
+        return 1.2
 
     def _lot_open_phase_grace_seconds(self) -> float:
         return 1.2
@@ -134,6 +103,7 @@ class BotRuntime:
         loader_started_at: float | None = None
         unknown_grace_until = 0.0
         search_phase_started_at: float | None = None
+        search_confirm_phase_started_at: float | None = None
         lot_open_phase_started_at: float | None = None
         buyout_confirm_phase_started_at: float | None = None
         purchase_result_started_at: float | None = None
@@ -199,13 +169,14 @@ class BotRuntime:
             if not bootstrapped and self.config.flow.trusted_start_search:
                 bootstrapped = True
                 self.logger.info(
-                    "Trusted S1 start enabled, sending immediate search sequence."
+                    "Trusted S1 start enabled, opening saved search parameters."
                 )
                 if not dry_run:
-                    self._execute_search_open_sequence()
-                search_phase_started_at = time.monotonic()
+                    self.input.press_enter()
+                search_confirm_phase_started_at = time.monotonic()
                 unknown_grace_until = (
-                    search_phase_started_at + self._search_phase_grace_seconds()
+                    search_confirm_phase_started_at
+                    + self._search_confirm_phase_grace_seconds()
                 )
                 time.sleep(self.config.timings.detect_interval_ms / 1000.0)
                 continue
@@ -217,8 +188,23 @@ class BotRuntime:
             s3b_score = detection.scores.get(ScreenName.S3B_LIST_EMPTY.value, 0.0)
             s4_score = detection.scores.get(ScreenName.S4_LOT_DETAILS.value, 0.0)
             s5_score = detection.scores.get(ScreenName.S5_BUY_CONFIRM.value, 0.0)
+            s2_score = detection.scores.get(ScreenName.S2_SEARCH_CONFIRM.value, 0.0)
             s7_score = detection.scores.get(ScreenName.S7_BUY_SUCCESS.value, 0.0)
             s8_score = detection.scores.get(ScreenName.S8_FINAL_SUCCESS.value, 0.0)
+
+            if (
+                screen is ScreenName.UNKNOWN
+                and search_confirm_phase_started_at is not None
+            ):
+                search_confirm_elapsed = time.monotonic() - search_confirm_phase_started_at
+                if search_confirm_elapsed >= 0.12:
+                    if s2_score >= 0.72 and (candidate_score - s2_score) <= 0.08:
+                        screen = ScreenName.S2_SEARCH_CONFIRM
+                    elif (
+                        candidate_screen is ScreenName.S2_SEARCH_CONFIRM
+                        and candidate_score >= 0.74
+                    ):
+                        screen = ScreenName.S2_SEARCH_CONFIRM
 
             if (
                 screen is ScreenName.UNKNOWN
@@ -232,11 +218,13 @@ class BotRuntime:
                     screen = ScreenName.S3B_LIST_EMPTY
 
             if screen in {
+                ScreenName.S2_SEARCH_CONFIRM,
                 ScreenName.S3A_LIST_PRESENT,
                 ScreenName.S3B_LIST_EMPTY,
                 ScreenName.S4_LOT_DETAILS,
             }:
                 search_phase_started_at = None
+                search_confirm_phase_started_at = None
 
             if (
                 screen is ScreenName.UNKNOWN
@@ -347,9 +335,6 @@ class BotRuntime:
                     )
                     time.sleep(self.config.timings.detect_interval_ms / 1000.0)
                     continue
-
-            if screen is ScreenName.S1_SEARCH_MENU:
-                cycles += 1
 
             if screen is ScreenName.UNKNOWN:
                 in_unknown_grace = time.monotonic() < unknown_grace_until
@@ -469,8 +454,28 @@ class BotRuntime:
                 )
 
             if not dry_run:
-                self._execute_flow_actions(decision.actions)
-                if self._is_search_sequence(decision.actions):
+                self._execute_actions(decision.actions)
+                if screen is ScreenName.S1_SEARCH_MENU and decision.actions == ("enter",):
+                    search_confirm_phase_started_at = time.monotonic()
+                    unknown_grace_until = (
+                        search_confirm_phase_started_at
+                        + self._search_confirm_phase_grace_seconds()
+                    )
+                elif screen is ScreenName.S2_SEARCH_CONFIRM and decision.actions == ("enter",):
+                    cycles += 1
+                    search_phase_started_at = time.monotonic()
+                    unknown_grace_until = (
+                        search_phase_started_at + self._search_phase_grace_seconds()
+                    )
+                elif screen is ScreenName.S3B_LIST_EMPTY and decision.actions == ("esc",):
+                    time.sleep(0.35)
+                    self.input.press_enter()
+                    search_confirm_phase_started_at = time.monotonic()
+                    unknown_grace_until = (
+                        search_confirm_phase_started_at
+                        + self._search_confirm_phase_grace_seconds()
+                    )
+                elif self._is_search_sequence(decision.actions):
                     search_phase_started_at = time.monotonic()
                     unknown_grace_until = (
                         search_phase_started_at + self._search_phase_grace_seconds()
