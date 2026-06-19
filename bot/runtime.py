@@ -77,6 +77,12 @@ class BotRuntime:
     def _search_confirm_phase_grace_seconds(self) -> float:
         return 1.2
 
+    def _search_confirm_retry_seconds(self) -> float:
+        return 0.75
+
+    def _search_confirm_max_retries(self) -> int:
+        return 2
+
     def _search_menu_return_grace_seconds(self) -> float:
         return 0.8
 
@@ -184,6 +190,7 @@ class BotRuntime:
         search_menu_return_started_at: float | None = None
         lot_open_phase_started_at: float | None = None
         buyout_confirm_phase_started_at: float | None = None
+        search_confirm_retries = 0
         buyout_confirm_fallback_used = False
         purchase_result_started_at: float | None = None
         self.logger.info("Runtime started")
@@ -266,6 +273,7 @@ class BotRuntime:
                 if not dry_run:
                     self.input.press_enter()
                 search_confirm_phase_started_at = time.monotonic()
+                search_confirm_retries = 0
                 unknown_grace_until = (
                     search_confirm_phase_started_at
                     + self._search_confirm_phase_grace_seconds()
@@ -338,23 +346,40 @@ class BotRuntime:
                     time.monotonic() - search_confirm_phase_started_at
                 )
                 if (
-                    search_confirm_elapsed >= 0.45
+                    search_confirm_elapsed >= self._search_confirm_retry_seconds()
                     and s1_score >= 0.70
                     and (candidate_score - s1_score) <= 0.12
                 ):
-                    self.logger.info(
-                        "screen=%s score=%.4f margin=%.4f status=retry actions=enter message=Search menu is still active, retrying saved search.",
-                        ScreenName.S1_SEARCH_MENU.value,
-                        s1_score,
-                        detection.margin,
-                    )
-                    if not dry_run:
-                        self.input.press_enter()
-                    search_confirm_phase_started_at = time.monotonic()
-                    unknown_grace_until = (
-                        search_confirm_phase_started_at
-                        + self._search_confirm_phase_grace_seconds()
-                    )
+                    if search_confirm_retries < self._search_confirm_max_retries():
+                        search_confirm_retries += 1
+                        self.logger.info(
+                            "screen=%s score=%.4f margin=%.4f status=retry actions=enter message=Search menu is still active, retrying saved search (%s/%s).",
+                            ScreenName.S1_SEARCH_MENU.value,
+                            s1_score,
+                            detection.margin,
+                            search_confirm_retries,
+                            self._search_confirm_max_retries(),
+                        )
+                        if not dry_run:
+                            self.input.press_enter()
+                        search_confirm_phase_started_at = time.monotonic()
+                        unknown_grace_until = (
+                            search_confirm_phase_started_at
+                            + self._search_confirm_phase_grace_seconds()
+                        )
+                    else:
+                        self.logger.warning(
+                            "Search confirmation did not open, returning to search menu"
+                        )
+                        if not dry_run:
+                            self.input.press_escape()
+                        search_confirm_phase_started_at = None
+                        search_confirm_retries = 0
+                        search_menu_return_started_at = time.monotonic()
+                        unknown_grace_until = (
+                            search_menu_return_started_at
+                            + self._search_menu_return_grace_seconds()
+                        )
                     time.sleep(self.config.timings.detect_interval_ms / 1000.0)
                     continue
 
@@ -368,12 +393,49 @@ class BotRuntime:
                 screen is ScreenName.S1_SEARCH_MENU
                 and search_confirm_phase_started_at is not None
             ):
-                self.logger.info(
-                    "screen=%s score=%.4f margin=%.4f status=wait actions= message=Search menu still visible after enter, waiting for confirmation screen.",
-                    screen.value,
-                    detection.score,
-                    detection.margin,
+                search_confirm_elapsed = (
+                    time.monotonic() - search_confirm_phase_started_at
                 )
+                if (
+                    search_confirm_elapsed >= self._search_confirm_retry_seconds()
+                    and search_confirm_retries < self._search_confirm_max_retries()
+                ):
+                    search_confirm_retries += 1
+                    self.logger.info(
+                        "screen=%s score=%.4f margin=%.4f status=retry actions=enter message=Search menu stayed visible, retrying saved search (%s/%s).",
+                        screen.value,
+                        detection.score,
+                        detection.margin,
+                        search_confirm_retries,
+                        self._search_confirm_max_retries(),
+                    )
+                    if not dry_run:
+                        self.input.press_enter()
+                    search_confirm_phase_started_at = time.monotonic()
+                    unknown_grace_until = (
+                        search_confirm_phase_started_at
+                        + self._search_confirm_phase_grace_seconds()
+                    )
+                elif search_confirm_retries >= self._search_confirm_max_retries():
+                    self.logger.warning(
+                        "Search menu stayed visible after retries, resetting cycle"
+                    )
+                    if not dry_run:
+                        self.input.press_escape()
+                    search_confirm_phase_started_at = None
+                    search_confirm_retries = 0
+                    search_menu_return_started_at = time.monotonic()
+                    unknown_grace_until = (
+                        search_menu_return_started_at
+                        + self._search_menu_return_grace_seconds()
+                    )
+                else:
+                    self.logger.info(
+                        "screen=%s score=%.4f margin=%.4f status=wait actions= message=Search menu still visible after enter, waiting for confirmation screen.",
+                        screen.value,
+                        detection.score,
+                        detection.margin,
+                    )
                 time.sleep(self.config.timings.detect_interval_ms / 1000.0)
                 continue
 
@@ -427,6 +489,7 @@ class BotRuntime:
             }:
                 search_phase_started_at = None
                 search_confirm_phase_started_at = None
+                search_confirm_retries = 0
 
             if (
                 screen is ScreenName.UNKNOWN
@@ -653,13 +716,25 @@ class BotRuntime:
                     )
                     recovery_started_at = time.monotonic()
                     if search_confirm_phase_started_at is not None:
-                        if not dry_run:
-                            self.input.press_enter()
-                        search_confirm_phase_started_at = recovery_started_at
-                        unknown_grace_until = (
-                            recovery_started_at
-                            + self._search_confirm_phase_grace_seconds()
-                        )
+                        if search_confirm_retries < self._search_confirm_max_retries():
+                            search_confirm_retries += 1
+                            if not dry_run:
+                                self.input.press_enter()
+                            search_confirm_phase_started_at = recovery_started_at
+                            unknown_grace_until = (
+                                recovery_started_at
+                                + self._search_confirm_phase_grace_seconds()
+                            )
+                        else:
+                            if not dry_run:
+                                self.input.press_escape()
+                            search_confirm_phase_started_at = None
+                            search_confirm_retries = 0
+                            search_menu_return_started_at = recovery_started_at
+                            unknown_grace_until = (
+                                recovery_started_at
+                                + self._search_menu_return_grace_seconds()
+                            )
                     else:
                         if not dry_run:
                             self.input.press_escape()
@@ -703,6 +778,7 @@ class BotRuntime:
                 machine.awaiting_purchase_result = False
                 recovery_started_at = time.monotonic()
                 search_confirm_phase_started_at = None
+                search_confirm_retries = 0
                 search_menu_return_started_at = None
                 if self.config.flow.fast_restart_search:
                     search_phase_started_at = recovery_started_at
@@ -732,6 +808,7 @@ class BotRuntime:
                 machine.awaiting_purchase_result = False
                 recovery_started_at = time.monotonic()
                 search_confirm_phase_started_at = None
+                search_confirm_retries = 0
                 search_menu_return_started_at = None
                 if self.config.flow.fast_restart_search:
                     search_phase_started_at = recovery_started_at
@@ -786,12 +863,14 @@ class BotRuntime:
                 self._execute_actions(decision.actions)
                 if screen is ScreenName.S1_SEARCH_MENU and decision.actions == ("enter",):
                     search_confirm_phase_started_at = time.monotonic()
+                    search_confirm_retries = 0
                     unknown_grace_until = (
                         search_confirm_phase_started_at
                         + self._search_confirm_phase_grace_seconds()
                     )
                 elif screen is ScreenName.S2_SEARCH_CONFIRM and decision.actions == ("enter",):
                     cycles += 1
+                    search_confirm_retries = 0
                     search_phase_started_at = time.monotonic()
                     unknown_grace_until = (
                         search_phase_started_at + self._search_phase_grace_seconds()
@@ -799,6 +878,7 @@ class BotRuntime:
                 elif screen is ScreenName.S3B_LIST_EMPTY and decision.actions == ("esc",):
                     search_phase_started_at = None
                     search_confirm_phase_started_at = None
+                    search_confirm_retries = 0
                     search_menu_return_started_at = time.monotonic()
                     unknown_grace_until = (
                         time.monotonic() + self._search_menu_return_grace_seconds()
@@ -806,6 +886,7 @@ class BotRuntime:
                 elif screen is ScreenName.S3C_LIST_SOLD and decision.actions == ("esc",):
                     search_phase_started_at = None
                     search_confirm_phase_started_at = None
+                    search_confirm_retries = 0
                     search_menu_return_started_at = time.monotonic()
                     unknown_grace_until = (
                         time.monotonic() + self._search_menu_return_grace_seconds()
