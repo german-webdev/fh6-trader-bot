@@ -131,6 +131,28 @@ class DetectorTests(unittest.TestCase):
             0.80,
         )
 
+    def test_buyout_selected_frame_detects_expected_screen(self) -> None:
+        screenshots_root = Path(r"C:\Users\musiq\OneDrive")
+        screenshot_path = next(
+            path for path in screenshots_root.rglob("*.png") if "221408" in path.name
+        )
+        detection = self._detect(screenshot_path)
+
+        self.assertEqual(detection.screen, ScreenName.S4_BUYOUT_SELECTED)
+        self.assertGreaterEqual(
+            detection.scores[ScreenName.S4_BUYOUT_SELECTED.value],
+            self.detector._screen_threshold(ScreenName.S4_BUYOUT_SELECTED),
+        )
+
+    def test_bid_selected_frame_does_not_trigger_buyout_selected(self) -> None:
+        image = Image.open(next(self.reference_dir.glob("4.*.png"))).convert("RGB")
+        score = self.detector._score_buyout_selected(_pil_to_bgr(image))
+
+        self.assertLess(
+            score,
+            self.detector._screen_threshold(ScreenName.S4_BUYOUT_SELECTED),
+        )
+
     def test_runtime_sold_lot_frame_detects_s3c(self) -> None:
         screenshots_root = Path(r"C:\Users\musiq\OneDrive")
         screenshot_path = next(

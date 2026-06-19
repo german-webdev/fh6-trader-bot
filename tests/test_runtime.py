@@ -30,9 +30,9 @@ class RuntimeGuardTests(unittest.TestCase):
         )
 
     def test_lot_details_requires_stabilization_delay(self) -> None:
-        self.assertGreaterEqual(
+        self.assertLessEqual(
             self.runtime._lot_details_min_ready_seconds(),
-            0.75,
+            0.20,
         )
 
 

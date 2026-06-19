@@ -29,8 +29,11 @@ class InputController:
     def press_escape(self) -> None:
         self._press(VK_ESCAPE, self.timings.after_esc_ms)
 
-    def press_down(self) -> None:
-        self._press(VK_DOWN, self.timings.after_down_ms)
+    def press_down(self, delay_ms: int | None = None) -> None:
+        self._press(
+            VK_DOWN,
+            self.timings.after_down_ms if delay_ms is None else delay_ms,
+        )
 
     def _press(self, vk_code: int, delay_ms: int) -> None:
         if not self.dry_run:

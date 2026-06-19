@@ -26,6 +26,8 @@ class TimingConfig:
     after_esc_ms: int
     after_down_ms: int
     buyout_selection_wait_ms: int
+    buyout_down_retry_ms: int
+    buyout_selection_timeout_ms: int
     detect_interval_ms: int
     search_timeout_ms: int
     purchase_timeout_ms: int

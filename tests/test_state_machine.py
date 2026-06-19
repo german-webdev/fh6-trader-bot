@@ -12,19 +12,24 @@ class StateMachineTests(unittest.TestCase):
         decision = machine.handle(ScreenName.S3B_LIST_EMPTY)
         self.assertEqual(decision.actions, ("esc",))
 
-    def test_list_loading_waits_for_lots(self) -> None:
+    def test_list_loading_spams_select(self) -> None:
         machine = AuctionStateMachine()
         decision = machine.handle(ScreenName.S3_LIST_LOADING)
-        self.assertEqual(decision.status, "wait")
-        self.assertEqual(decision.actions, ())
+        self.assertEqual(decision.status, "advance")
+        self.assertEqual(decision.actions, ("enter",))
 
     def test_lot_details_moves_to_buyout(self) -> None:
         machine = AuctionStateMachine()
         decision = machine.handle(ScreenName.S4_LOT_DETAILS)
         self.assertEqual(
             decision.actions,
-            ("down", "wait_buyout_selection", "enter"),
+            ("buyout_down",),
         )
+
+    def test_buyout_selected_confirms_purchase(self) -> None:
+        machine = AuctionStateMachine()
+        decision = machine.handle(ScreenName.S4_BUYOUT_SELECTED)
+        self.assertEqual(decision.actions, ("enter",))
 
     def test_sold_lot_returns_to_search(self) -> None:
         machine = AuctionStateMachine(fast_restart_search=True)

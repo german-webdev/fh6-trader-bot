@@ -555,6 +555,8 @@ class ScreenDetector:
             return 0.56
         if screen is ScreenName.S4_LOT_LOADING:
             return 0.80
+        if screen is ScreenName.S4_BUYOUT_SELECTED:
+            return 0.82
         if screen in {
             ScreenName.S4_LOT_DETAILS,
             ScreenName.S5_BUY_CONFIRM,
@@ -797,6 +799,82 @@ class ScreenDetector:
             + (lime_score * 0.20)
         )
 
+    def _score_buyout_selected(self, image: np.ndarray) -> float:
+        buyout_crop = _crop_region(image, (0.032, 0.795, 0.285, 0.885))
+        bid_crop = _crop_region(image, (0.032, 0.735, 0.285, 0.815))
+
+        buyout_hsv = cv2.cvtColor(buyout_crop, cv2.COLOR_BGR2HSV)
+        bid_hsv = cv2.cvtColor(bid_crop, cv2.COLOR_BGR2HSV)
+        buyout_gray = cv2.cvtColor(buyout_crop, cv2.COLOR_BGR2GRAY)
+
+        lime_lower = np.array([30, 95, 130], dtype=np.uint8)
+        lime_upper = np.array([88, 255, 255], dtype=np.uint8)
+        buyout_lime_mask = cv2.inRange(buyout_hsv, lime_lower, lime_upper)
+        bid_lime_mask = cv2.inRange(bid_hsv, lime_lower, lime_upper)
+
+        red_mask_1 = cv2.inRange(
+            buyout_hsv,
+            np.array([0, 85, 130], dtype=np.uint8),
+            np.array([12, 255, 255], dtype=np.uint8),
+        )
+        red_mask_2 = cv2.inRange(
+            buyout_hsv,
+            np.array([170, 85, 130], dtype=np.uint8),
+            np.array([179, 255, 255], dtype=np.uint8),
+        )
+        yellow_mask = cv2.inRange(
+            buyout_hsv,
+            np.array([18, 90, 130], dtype=np.uint8),
+            np.array([42, 255, 255], dtype=np.uint8),
+        )
+        _threshold, white_mask = cv2.threshold(
+            buyout_gray,
+            185,
+            255,
+            cv2.THRESH_BINARY,
+        )
+        _threshold, dark_mask = cv2.threshold(
+            buyout_gray,
+            80,
+            255,
+            cv2.THRESH_BINARY_INV,
+        )
+
+        buyout_lime_ratio = np.count_nonzero(buyout_lime_mask) / max(
+            1,
+            buyout_lime_mask.size,
+        )
+        bid_lime_ratio = np.count_nonzero(bid_lime_mask) / max(
+            1,
+            bid_lime_mask.size,
+        )
+        red_ratio = (
+            np.count_nonzero(red_mask_1 | red_mask_2) / max(1, red_mask_1.size)
+        )
+        yellow_ratio = np.count_nonzero(yellow_mask) / max(1, yellow_mask.size)
+        white_ratio = np.count_nonzero(white_mask) / max(1, white_mask.size)
+        dark_ratio = np.count_nonzero(dark_mask) / max(1, dark_mask.size)
+
+        if buyout_lime_ratio < 0.030:
+            return 0.0
+        if buyout_lime_ratio <= bid_lime_ratio * 1.20:
+            return 0.0
+
+        lime_score = min(1.0, buyout_lime_ratio / 0.050)
+        selected_delta_score = min(
+            1.0,
+            (buyout_lime_ratio - bid_lime_ratio) / 0.035,
+        )
+        dark_score = min(1.0, dark_ratio / 0.45)
+        text_score = min(1.0, (white_ratio + red_ratio + yellow_ratio) / 0.18)
+
+        return float(
+            (lime_score * 0.35)
+            + (selected_delta_score * 0.30)
+            + (dark_score * 0.20)
+            + (text_score * 0.15)
+        )
+
     def _score_lot_sold_detail(self, image: np.ndarray) -> float:
         status_crop = _crop_region(image, (0.165, 0.680, 0.285, 0.755))
         full_left_crop = _crop_region(image, (0.030, 0.120, 0.290, 0.760))
@@ -939,6 +1017,41 @@ class ScreenDetector:
                     margin=max(
                         self.config.detector.min_margin,
                         float(list_loading_score - best_other_score),
+                    ),
+                    scores=profile_scores,
+                )
+
+        should_score_buyout_selected = (
+            candidate_set is None or ScreenName.S4_BUYOUT_SELECTED in candidate_set
+        )
+        if should_score_buyout_selected:
+            buyout_selected_score = self._score_buyout_selected(image_bgr)
+            profile_scores[ScreenName.S4_BUYOUT_SELECTED.value] = buyout_selected_score
+            profile_matches[ScreenName.S4_BUYOUT_SELECTED.value] = (
+                buyout_selected_score
+                >= self._screen_threshold(ScreenName.S4_BUYOUT_SELECTED)
+            )
+
+            best_other_score = max(
+                (
+                    score
+                    for screen, score in profile_scores.items()
+                    if screen != ScreenName.S4_BUYOUT_SELECTED.value
+                ),
+                default=0.0,
+            )
+            if (
+                buyout_selected_score
+                >= self._screen_threshold(ScreenName.S4_BUYOUT_SELECTED)
+                and buyout_selected_score >= best_other_score
+            ):
+                return DetectionResult(
+                    screen=ScreenName.S4_BUYOUT_SELECTED,
+                    score=float(buyout_selected_score),
+                    threshold=self._screen_threshold(ScreenName.S4_BUYOUT_SELECTED),
+                    margin=max(
+                        self.config.detector.min_margin,
+                        float(buyout_selected_score - best_other_score),
                     ),
                     scores=profile_scores,
                 )

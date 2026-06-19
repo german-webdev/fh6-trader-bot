@@ -93,7 +93,10 @@ class BotRuntime:
         return 1.2
 
     def _lot_details_min_ready_seconds(self) -> float:
-        return 0.85
+        return 0.15
+
+    def _buyout_selection_timeout_seconds(self) -> float:
+        return self.config.timings.buyout_selection_timeout_ms / 1000.0
 
     def _buyout_confirm_phase_grace_seconds(self) -> float:
         return 1.2
@@ -130,6 +133,7 @@ class BotRuntime:
         search_confirm_phase_started_at: float | None,
         search_menu_return_started_at: float | None,
         lot_open_phase_started_at: float | None,
+        buyout_selection_phase_started_at: float | None,
         buyout_confirm_phase_started_at: float | None,
     ) -> tuple[ScreenName, ...] | None:
         if machine.awaiting_purchase_result:
@@ -153,6 +157,14 @@ class BotRuntime:
                 ScreenName.S3C_LIST_SOLD,
             )
 
+        if buyout_selection_phase_started_at is not None:
+            return (
+                ScreenName.S4_LOT_LOADING,
+                ScreenName.S4_LOT_DETAILS,
+                ScreenName.S4_BUYOUT_SELECTED,
+                ScreenName.S4_LOT_SOLD,
+            )
+
         if lot_open_phase_started_at is not None:
             return (
                 ScreenName.S3A_LIST_PRESENT,
@@ -161,6 +173,7 @@ class BotRuntime:
                 ScreenName.S3C_LIST_SOLD,
                 ScreenName.S4_LOT_LOADING,
                 ScreenName.S4_LOT_DETAILS,
+                ScreenName.S4_BUYOUT_SELECTED,
                 ScreenName.S4_LOT_SOLD,
             )
 
@@ -213,6 +226,7 @@ class BotRuntime:
         search_confirm_phase_started_at: float | None = None
         search_menu_return_started_at: float | None = None
         lot_open_phase_started_at: float | None = None
+        buyout_selection_phase_started_at: float | None = None
         buyout_confirm_phase_started_at: float | None = None
         search_confirm_retries = 0
         buyout_confirm_fallback_used = False
@@ -313,6 +327,7 @@ class BotRuntime:
                     search_confirm_phase_started_at=search_confirm_phase_started_at,
                     search_menu_return_started_at=search_menu_return_started_at,
                     lot_open_phase_started_at=lot_open_phase_started_at,
+                    buyout_selection_phase_started_at=buyout_selection_phase_started_at,
                     buyout_confirm_phase_started_at=buyout_confirm_phase_started_at,
                 ),
             )
@@ -330,6 +345,10 @@ class BotRuntime:
                 0.0,
             )
             s4_score = detection.scores.get(ScreenName.S4_LOT_DETAILS.value, 0.0)
+            s4_buyout_score = detection.scores.get(
+                ScreenName.S4_BUYOUT_SELECTED.value,
+                0.0,
+            )
             s4_sold_score = detection.scores.get(ScreenName.S4_LOT_SOLD.value, 0.0)
             s5_score = detection.scores.get(ScreenName.S5_BUY_CONFIRM.value, 0.0)
             s1_score = detection.scores.get(ScreenName.S1_SEARCH_MENU.value, 0.0)
@@ -519,6 +538,7 @@ class BotRuntime:
                 ScreenName.S3C_LIST_SOLD,
                 ScreenName.S4_LOT_LOADING,
                 ScreenName.S4_LOT_DETAILS,
+                ScreenName.S4_BUYOUT_SELECTED,
                 ScreenName.S4_LOT_SOLD,
             }:
                 search_phase_started_at = None
@@ -548,6 +568,10 @@ class BotRuntime:
                     screen = ScreenName.S3A_LIST_PRESENT
                 elif s4_loading_score >= 0.80 and (candidate_score - s4_loading_score) <= 0.08:
                     screen = ScreenName.S4_LOT_LOADING
+                elif s4_buyout_score >= self.detector._screen_threshold(
+                    ScreenName.S4_BUYOUT_SELECTED
+                ):
+                    screen = ScreenName.S4_BUYOUT_SELECTED
                 if screen is ScreenName.UNKNOWN and lot_open_elapsed >= 0.65:
                     if s4_score >= 0.80 and (candidate_score - s4_score) <= 0.04:
                         screen = ScreenName.S4_LOT_DETAILS
@@ -568,6 +592,7 @@ class BotRuntime:
 
             if screen in {
                 ScreenName.S4_LOT_DETAILS,
+                ScreenName.S4_BUYOUT_SELECTED,
                 ScreenName.S4_LOT_SOLD,
                 ScreenName.S5_BUY_CONFIRM,
                 ScreenName.S6_LOADER,
@@ -695,6 +720,7 @@ class BotRuntime:
                 ScreenName.S8_FINAL_SUCCESS,
                 ScreenName.S4_LOT_SOLD,
             }:
+                buyout_selection_phase_started_at = None
                 buyout_confirm_phase_started_at = None
                 buyout_confirm_fallback_used = False
 
@@ -834,6 +860,35 @@ class BotRuntime:
                 unknown_count = 0
                 purchase_unknown_count = 0
 
+            if (
+                buyout_selection_phase_started_at is not None
+                and (time.monotonic() - buyout_selection_phase_started_at)
+                >= self._buyout_selection_timeout_seconds()
+            ):
+                self.logger.warning(
+                    "Buyout button was not selected in time, returning to search menu"
+                )
+                if not dry_run:
+                    self._execute_actions(("esc", "esc"))
+                machine.awaiting_purchase_result = False
+                recovery_started_at = time.monotonic()
+                search_phase_started_at = None
+                search_confirm_phase_started_at = None
+                search_confirm_retries = 0
+                lot_open_phase_started_at = None
+                buyout_selection_phase_started_at = None
+                buyout_confirm_phase_started_at = None
+                purchase_result_started_at = None
+                loader_started_at = None
+                search_menu_return_started_at = recovery_started_at
+                unknown_grace_until = (
+                    recovery_started_at + self._search_menu_return_grace_seconds()
+                )
+                unknown_count = 0
+                purchase_unknown_count = 0
+                time.sleep(self.config.timings.detect_interval_ms / 1000.0)
+                continue
+
             if screen is ScreenName.S6_LOADER and loader_started_at is None:
                 loader_started_at = time.monotonic()
                 if purchase_result_started_at is None:
@@ -960,6 +1015,7 @@ class BotRuntime:
                 elif screen is ScreenName.S3B_LIST_EMPTY and decision.actions == ("esc",):
                     search_phase_started_at = None
                     lot_open_phase_started_at = None
+                    buyout_selection_phase_started_at = None
                     search_confirm_phase_started_at = None
                     search_confirm_retries = 0
                     search_menu_return_started_at = time.monotonic()
@@ -969,6 +1025,7 @@ class BotRuntime:
                 elif screen is ScreenName.S3C_LIST_SOLD and decision.actions == ("esc",):
                     search_phase_started_at = None
                     lot_open_phase_started_at = None
+                    buyout_selection_phase_started_at = None
                     search_confirm_phase_started_at = None
                     search_confirm_retries = 0
                     search_menu_return_started_at = time.monotonic()
@@ -982,6 +1039,7 @@ class BotRuntime:
                     machine.awaiting_purchase_result = False
                     search_phase_started_at = None
                     lot_open_phase_started_at = None
+                    buyout_selection_phase_started_at = None
                     buyout_confirm_phase_started_at = None
                     purchase_result_started_at = None
                     loader_started_at = None
@@ -994,16 +1052,29 @@ class BotRuntime:
                     unknown_grace_until = (
                         search_phase_started_at + self._search_phase_grace_seconds()
                     )
-                elif screen is ScreenName.S3A_LIST_PRESENT and decision.actions == ("enter",):
+                elif (
+                    screen in {ScreenName.S3A_LIST_PRESENT, ScreenName.S3_LIST_LOADING}
+                    and decision.actions == ("enter",)
+                ):
                     lot_open_phase_started_at = time.monotonic()
                     unknown_grace_until = (
                         lot_open_phase_started_at + self._lot_open_phase_grace_seconds()
                     )
                 elif (
                     screen is ScreenName.S4_LOT_DETAILS
-                    and decision.actions == ("down", "wait_buyout_selection", "enter")
+                    and decision.actions == ("buyout_down",)
+                ):
+                    buyout_selection_phase_started_at = time.monotonic()
+                    unknown_grace_until = (
+                        buyout_selection_phase_started_at
+                        + self._buyout_selection_timeout_seconds()
+                    )
+                elif (
+                    screen is ScreenName.S4_BUYOUT_SELECTED
+                    and decision.actions == ("enter",)
                 ):
                     buyout_confirm_phase_started_at = time.monotonic()
+                    buyout_selection_phase_started_at = None
                     buyout_confirm_fallback_used = False
                     unknown_grace_until = (
                         buyout_confirm_phase_started_at
@@ -1128,6 +1199,9 @@ class BotRuntime:
                 continue
             if action == "down":
                 self.input.press_down()
+                continue
+            if action == "buyout_down":
+                self.input.press_down(self.config.timings.buyout_down_retry_ms)
                 continue
             if action == "wait_buyout_selection":
                 time.sleep(self.config.timings.buyout_selection_wait_ms / 1000.0)
