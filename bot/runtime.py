@@ -106,6 +106,19 @@ class BotRuntime:
             return ("enter", "esc", "esc", "enter", "enter")
         return ("enter", "esc", "esc")
 
+    def _search_list_beats_success(
+        self,
+        *,
+        s3b_score: float,
+        s3c_score: float,
+        s7_score: float,
+    ) -> bool:
+        list_score = max(s3b_score, s3c_score)
+        return (
+            (s3b_score >= 0.72 or s3c_score >= 0.56)
+            and list_score >= (s7_score + self.config.detector.min_margin)
+        )
+
     def _detection_candidates(
         self,
         *,
@@ -577,9 +590,10 @@ class BotRuntime:
                     if purchase_result_started_at is None
                     else (time.monotonic() - purchase_result_started_at)
                 )
-                if (
-                    (s3b_score >= 0.72 or s3c_score >= 0.56)
-                    and s7_score < 0.90
+                if self._search_list_beats_success(
+                    s3b_score=s3b_score,
+                    s3c_score=s3c_score,
+                    s7_score=s7_score,
                 ):
                     machine.awaiting_purchase_result = False
                     screen = (
@@ -592,8 +606,14 @@ class BotRuntime:
                 if purchase_result_elapsed >= 0.9:
                     if (
                         screen is ScreenName.UNKNOWN
-                        and s7_score >= 0.86
-                        and (candidate_score - s7_score) <= 0.08
+                        and s7_score >= self.detector._screen_threshold(
+                            ScreenName.S7_BUY_SUCCESS
+                        )
+                        and not self._search_list_beats_success(
+                            s3b_score=s3b_score,
+                            s3c_score=s3c_score,
+                            s7_score=s7_score,
+                        )
                     ):
                         screen = ScreenName.S7_BUY_SUCCESS
                     elif (
@@ -627,7 +647,11 @@ class BotRuntime:
                     screen in {ScreenName.S3B_LIST_EMPTY, ScreenName.S3C_LIST_SOLD}
                     or (
                         screen is ScreenName.S7_BUY_SUCCESS
-                        and s7_score < 0.90
+                        and self._search_list_beats_success(
+                            s3b_score=s3b_score,
+                            s3c_score=s3c_score,
+                            s7_score=s7_score,
+                        )
                     )
                 )
             ):
