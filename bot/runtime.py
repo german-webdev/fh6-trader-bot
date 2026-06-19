@@ -150,6 +150,10 @@ class BotRuntime:
 
         if lot_open_phase_started_at is not None:
             return (
+                ScreenName.S3A_LIST_PRESENT,
+                ScreenName.S3_LIST_LOADING,
+                ScreenName.S3B_LIST_EMPTY,
+                ScreenName.S3C_LIST_SOLD,
                 ScreenName.S4_LOT_LOADING,
                 ScreenName.S4_LOT_DETAILS,
             )
@@ -157,6 +161,7 @@ class BotRuntime:
         if search_phase_started_at is not None:
             return (
                 ScreenName.S3A_LIST_PRESENT,
+                ScreenName.S3_LIST_LOADING,
                 ScreenName.S3B_LIST_EMPTY,
                 ScreenName.S3C_LIST_SOLD,
             )
@@ -308,6 +313,10 @@ class BotRuntime:
             screen = detection.screen
             candidate_screen, candidate_score = self._best_candidate(detection.scores)
             s3a_score = detection.scores.get(ScreenName.S3A_LIST_PRESENT.value, 0.0)
+            s3_loading_score = detection.scores.get(
+                ScreenName.S3_LIST_LOADING.value,
+                0.0,
+            )
             s3b_score = detection.scores.get(ScreenName.S3B_LIST_EMPTY.value, 0.0)
             s3c_score = detection.scores.get(ScreenName.S3C_LIST_SOLD.value, 0.0)
             s4_loading_score = detection.scores.get(
@@ -469,7 +478,11 @@ class BotRuntime:
                 and search_phase_started_at is not None
             ):
                 search_phase_elapsed = time.monotonic() - search_phase_started_at
-                if (
+                if s3_loading_score >= self.detector._screen_threshold(
+                    ScreenName.S3_LIST_LOADING
+                ):
+                    screen = ScreenName.S3_LIST_LOADING
+                elif (
                     search_phase_elapsed >= 0.18
                     and s3b_score >= 0.74
                     and s3a_score < 0.72
@@ -509,9 +522,21 @@ class BotRuntime:
                 and lot_open_phase_started_at is not None
             ):
                 lot_open_elapsed = time.monotonic() - lot_open_phase_started_at
-                if s4_loading_score >= 0.80 and (candidate_score - s4_loading_score) <= 0.08:
+                if s3_loading_score >= self.detector._screen_threshold(
+                    ScreenName.S3_LIST_LOADING
+                ):
+                    screen = ScreenName.S3_LIST_LOADING
+                elif (
+                    lot_open_elapsed >= 0.35
+                    and s3a_score >= 0.74
+                    and s3_loading_score < self.detector._screen_threshold(
+                        ScreenName.S3_LIST_LOADING
+                    )
+                ):
+                    screen = ScreenName.S3A_LIST_PRESENT
+                elif s4_loading_score >= 0.80 and (candidate_score - s4_loading_score) <= 0.08:
                     screen = ScreenName.S4_LOT_LOADING
-                if lot_open_elapsed >= 0.65:
+                if screen is ScreenName.UNKNOWN and lot_open_elapsed >= 0.65:
                     if s4_score >= 0.80 and (candidate_score - s4_score) <= 0.04:
                         screen = ScreenName.S4_LOT_DETAILS
                     elif (
@@ -901,6 +926,7 @@ class BotRuntime:
                     )
                 elif screen is ScreenName.S3B_LIST_EMPTY and decision.actions == ("esc",):
                     search_phase_started_at = None
+                    lot_open_phase_started_at = None
                     search_confirm_phase_started_at = None
                     search_confirm_retries = 0
                     search_menu_return_started_at = time.monotonic()
@@ -909,6 +935,7 @@ class BotRuntime:
                     )
                 elif screen is ScreenName.S3C_LIST_SOLD and decision.actions == ("esc",):
                     search_phase_started_at = None
+                    lot_open_phase_started_at = None
                     search_confirm_phase_started_at = None
                     search_confirm_retries = 0
                     search_menu_return_started_at = time.monotonic()

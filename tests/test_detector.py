@@ -105,6 +105,32 @@ class DetectorTests(unittest.TestCase):
         self.assertLess(s3a_score, 0.72)
         self.assertLess(s7_score, 0.90)
 
+    def test_runtime_list_loading_frame_waits_for_lots(self) -> None:
+        screenshots_root = Path(r"C:\Users\musiq\OneDrive")
+        screenshot_path = next(
+            path for path in screenshots_root.rglob("*.png") if "190016" in path.name
+        )
+        detection = self._detect(screenshot_path)
+
+        self.assertEqual(detection.screen, ScreenName.S3_LIST_LOADING)
+        self.assertGreaterEqual(
+            detection.scores[ScreenName.S3_LIST_LOADING.value],
+            self.detector._screen_threshold(ScreenName.S3_LIST_LOADING),
+        )
+
+    def test_lot_details_requires_ready_bid_panel(self) -> None:
+        ready_image = Image.open(next(self.reference_dir.glob("4.*.png"))).convert("RGB")
+        loading_image = Image.open(next(self.reference_dir.glob("4a*.png"))).convert("RGB")
+
+        self.assertGreaterEqual(
+            self.detector._score_lot_details_ready(_pil_to_bgr(ready_image)),
+            0.80,
+        )
+        self.assertLess(
+            self.detector._score_lot_details_ready(_pil_to_bgr(loading_image)),
+            0.80,
+        )
+
     def test_runtime_sold_lot_frame_detects_s3c(self) -> None:
         screenshots_root = Path(r"C:\Users\musiq\OneDrive")
         screenshot_path = next(

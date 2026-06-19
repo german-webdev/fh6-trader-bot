@@ -547,6 +547,8 @@ class ScreenDetector:
         return tuple(prepared)
 
     def _screen_threshold(self, screen: ScreenName) -> float:
+        if screen is ScreenName.S3_LIST_LOADING:
+            return 0.86
         if screen is ScreenName.S3C_LIST_SOLD:
             return 0.56
         if screen is ScreenName.S4_LOT_LOADING:
@@ -607,6 +609,14 @@ class ScreenDetector:
                 all_required_triggers_matched = False
 
         profile_score = weighted_score / total_weight
+        if profile.screen is ScreenName.S4_LOT_DETAILS:
+            ready_score = self._score_lot_details_ready(image)
+            if ready_score < 0.80:
+                return (
+                    float(min(profile_score, ready_score, self._screen_threshold(profile.screen) - 0.02)),
+                    False,
+                )
+
         effective_score = profile_score
         if not all_required_triggers_matched:
             effective_score = min(
@@ -709,6 +719,82 @@ class ScreenDetector:
 
         return best_score
 
+    def _score_list_loading(self, image: np.ndarray) -> float:
+        bands: tuple[Region, ...] = (
+            (0.040, 0.150, 0.490, 0.310),
+            (0.040, 0.340, 0.490, 0.520),
+            (0.040, 0.535, 0.490, 0.700),
+            (0.040, 0.715, 0.490, 0.890),
+        )
+        white_ratios: list[float] = []
+
+        for band in bands:
+            crop = _crop_region(image, band)
+            gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+            _threshold, white_mask = cv2.threshold(
+                gray,
+                220,
+                255,
+                cv2.THRESH_BINARY,
+            )
+            white_ratios.append(
+                np.count_nonzero(white_mask) / max(1, white_mask.size)
+            )
+
+        average_white = sum(white_ratios) / len(white_ratios)
+        minimum_white = min(white_ratios)
+        filled_bands = sum(1 for ratio in white_ratios if ratio >= 0.93)
+
+        average_score = min(1.0, average_white / 0.96)
+        minimum_score = min(1.0, minimum_white / 0.90)
+        bands_score = filled_bands / len(white_ratios)
+
+        return float(
+            (average_score * 0.45)
+            + (minimum_score * 0.35)
+            + (bands_score * 0.20)
+        )
+
+    def _score_lot_details_ready(self, image: np.ndarray) -> float:
+        bottom_crop = _crop_region(image, (0.035, 0.835, 0.355, 0.995))
+        bottom_hsv = cv2.cvtColor(bottom_crop, cv2.COLOR_BGR2HSV)
+        bottom_gray = cv2.cvtColor(bottom_crop, cv2.COLOR_BGR2GRAY)
+
+        lime_mask = cv2.inRange(
+            bottom_hsv,
+            np.array([30, 60, 100], dtype=np.uint8),
+            np.array([95, 255, 255], dtype=np.uint8),
+        )
+        _threshold, white_mask = cv2.threshold(
+            bottom_gray,
+            200,
+            255,
+            cv2.THRESH_BINARY,
+        )
+        _threshold, dark_mask = cv2.threshold(
+            bottom_gray,
+            60,
+            255,
+            cv2.THRESH_BINARY_INV,
+        )
+
+        lime_ratio = np.count_nonzero(lime_mask) / max(1, lime_mask.size)
+        white_ratio = np.count_nonzero(white_mask) / max(1, white_mask.size)
+        dark_ratio = np.count_nonzero(dark_mask) / max(1, dark_mask.size)
+
+        if lime_ratio < 0.015:
+            return 0.0
+
+        lime_score = min(1.0, lime_ratio / 0.025)
+        white_score = min(1.0, white_ratio / 0.035)
+        dark_score = min(1.0, dark_ratio / 0.65)
+
+        return float(
+            (dark_score * 0.45)
+            + (white_score * 0.35)
+            + (lime_score * 0.20)
+        )
+
     def _score_empty_auction_message(self, image: np.ndarray) -> float:
         search_crop = _crop_region(image, (0.550, 0.460, 0.910, 0.620))
         gray = cv2.cvtColor(search_crop, cv2.COLOR_BGR2GRAY)
@@ -783,6 +869,37 @@ class ScreenDetector:
                 profile_scores[ScreenName.S3B_LIST_EMPTY.value]
                 >= self._screen_threshold(ScreenName.S3B_LIST_EMPTY)
             )
+
+        should_score_list_loading = (
+            candidate_set is None or ScreenName.S3_LIST_LOADING in candidate_set
+        )
+        if should_score_list_loading:
+            list_loading_score = self._score_list_loading(image_bgr)
+            profile_scores[ScreenName.S3_LIST_LOADING.value] = list_loading_score
+            profile_matches[ScreenName.S3_LIST_LOADING.value] = (
+                list_loading_score
+                >= self._screen_threshold(ScreenName.S3_LIST_LOADING)
+            )
+
+            if list_loading_score >= self._screen_threshold(ScreenName.S3_LIST_LOADING):
+                best_other_score = max(
+                    (
+                        score
+                        for screen, score in profile_scores.items()
+                        if screen != ScreenName.S3_LIST_LOADING.value
+                    ),
+                    default=0.0,
+                )
+                return DetectionResult(
+                    screen=ScreenName.S3_LIST_LOADING,
+                    score=float(list_loading_score),
+                    threshold=self._screen_threshold(ScreenName.S3_LIST_LOADING),
+                    margin=max(
+                        self.config.detector.min_margin,
+                        float(list_loading_score - best_other_score),
+                    ),
+                    scores=profile_scores,
+                )
 
         should_score_sold = (
             candidate_set is None or ScreenName.S3C_LIST_SOLD in candidate_set

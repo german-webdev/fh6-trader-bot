@@ -12,6 +12,12 @@ class StateMachineTests(unittest.TestCase):
         decision = machine.handle(ScreenName.S3B_LIST_EMPTY)
         self.assertEqual(decision.actions, ("esc",))
 
+    def test_list_loading_waits_for_lots(self) -> None:
+        machine = AuctionStateMachine()
+        decision = machine.handle(ScreenName.S3_LIST_LOADING)
+        self.assertEqual(decision.status, "wait")
+        self.assertEqual(decision.actions, ())
+
     def test_lot_details_moves_to_buyout(self) -> None:
         machine = AuctionStateMachine()
         decision = machine.handle(ScreenName.S4_LOT_DETAILS)

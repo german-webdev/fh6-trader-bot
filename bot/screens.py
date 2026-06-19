@@ -7,6 +7,7 @@ class ScreenName(str, Enum):
     S1_SEARCH_MENU = "s1_search_menu"
     S2_SEARCH_CONFIRM = "s2_search_confirm"
     S3A_LIST_PRESENT = "s3a_list_present"
+    S3_LIST_LOADING = "s3_list_loading"
     S3B_LIST_EMPTY = "s3b_list_empty"
     S3C_LIST_SOLD = "s3c_list_sold"
     S4_LOT_LOADING = "s4_lot_loading"

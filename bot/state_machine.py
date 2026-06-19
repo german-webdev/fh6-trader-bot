@@ -89,6 +89,13 @@ class AuctionStateMachine:
                 actions=("enter",),
             )
 
+        if screen is ScreenName.S3_LIST_LOADING:
+            self.previous_screen = screen
+            return StepDecision(
+                status="wait",
+                message="Auction list is still loading.",
+            )
+
         if screen is ScreenName.S3B_LIST_EMPTY:
             self.previous_screen = screen
             self.awaiting_purchase_result = False
