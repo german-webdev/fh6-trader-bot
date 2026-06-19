@@ -44,6 +44,12 @@ class StateMachineTests(unittest.TestCase):
         self.assertEqual(decision.status, "wait")
         self.assertEqual(decision.actions, ())
 
+    def test_sold_lot_details_returns_to_search(self) -> None:
+        machine = AuctionStateMachine()
+        decision = machine.handle(ScreenName.S4_LOT_SOLD)
+        self.assertEqual(decision.status, "recover")
+        self.assertEqual(decision.actions, ("esc", "esc"))
+
     def test_success_stops_on_final_screen(self) -> None:
         machine = AuctionStateMachine()
         decision = machine.handle(ScreenName.S8_FINAL_SUCCESS)

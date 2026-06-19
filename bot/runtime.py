@@ -138,6 +138,7 @@ class BotRuntime:
                 ScreenName.S6_LOADER,
                 ScreenName.S7_BUY_SUCCESS,
                 ScreenName.S8_FINAL_SUCCESS,
+                ScreenName.S4_LOT_SOLD,
                 ScreenName.S3B_LIST_EMPTY,
                 ScreenName.S3C_LIST_SOLD,
             )
@@ -147,6 +148,7 @@ class BotRuntime:
                 ScreenName.S5_BUY_CONFIRM,
                 ScreenName.S6_LOADER,
                 ScreenName.S7_BUY_SUCCESS,
+                ScreenName.S4_LOT_SOLD,
                 ScreenName.S3B_LIST_EMPTY,
                 ScreenName.S3C_LIST_SOLD,
             )
@@ -159,6 +161,7 @@ class BotRuntime:
                 ScreenName.S3C_LIST_SOLD,
                 ScreenName.S4_LOT_LOADING,
                 ScreenName.S4_LOT_DETAILS,
+                ScreenName.S4_LOT_SOLD,
             )
 
         if search_phase_started_at is not None:
@@ -327,6 +330,7 @@ class BotRuntime:
                 0.0,
             )
             s4_score = detection.scores.get(ScreenName.S4_LOT_DETAILS.value, 0.0)
+            s4_sold_score = detection.scores.get(ScreenName.S4_LOT_SOLD.value, 0.0)
             s5_score = detection.scores.get(ScreenName.S5_BUY_CONFIRM.value, 0.0)
             s1_score = detection.scores.get(ScreenName.S1_SEARCH_MENU.value, 0.0)
             s2_score = detection.scores.get(ScreenName.S2_SEARCH_CONFIRM.value, 0.0)
@@ -515,6 +519,7 @@ class BotRuntime:
                 ScreenName.S3C_LIST_SOLD,
                 ScreenName.S4_LOT_LOADING,
                 ScreenName.S4_LOT_DETAILS,
+                ScreenName.S4_LOT_SOLD,
             }:
                 search_phase_started_at = None
                 search_confirm_phase_started_at = None
@@ -525,7 +530,11 @@ class BotRuntime:
                 and lot_open_phase_started_at is not None
             ):
                 lot_open_elapsed = time.monotonic() - lot_open_phase_started_at
-                if s3_loading_score >= self.detector._screen_threshold(
+                if s4_sold_score >= self.detector._screen_threshold(
+                    ScreenName.S4_LOT_SOLD
+                ):
+                    screen = ScreenName.S4_LOT_SOLD
+                elif s3_loading_score >= self.detector._screen_threshold(
                     ScreenName.S3_LIST_LOADING
                 ):
                     screen = ScreenName.S3_LIST_LOADING
@@ -559,12 +568,24 @@ class BotRuntime:
 
             if screen in {
                 ScreenName.S4_LOT_DETAILS,
+                ScreenName.S4_LOT_SOLD,
                 ScreenName.S5_BUY_CONFIRM,
                 ScreenName.S6_LOADER,
                 ScreenName.S7_BUY_SUCCESS,
                 ScreenName.S8_FINAL_SUCCESS,
             }:
                 lot_open_phase_started_at = None
+
+            if (
+                machine.awaiting_purchase_result
+                and s7_score >= 0.92
+                and not self._search_list_beats_success(
+                    s3b_score=s3b_score,
+                    s3c_score=s3c_score,
+                    s7_score=s7_score,
+                )
+            ):
+                screen = ScreenName.S7_BUY_SUCCESS
 
             if (
                 screen is ScreenName.UNKNOWN
@@ -672,6 +693,7 @@ class BotRuntime:
                 ScreenName.S6_LOADER,
                 ScreenName.S7_BUY_SUCCESS,
                 ScreenName.S8_FINAL_SUCCESS,
+                ScreenName.S4_LOT_SOLD,
             }:
                 buyout_confirm_phase_started_at = None
                 buyout_confirm_fallback_used = False
@@ -949,6 +971,20 @@ class BotRuntime:
                     lot_open_phase_started_at = None
                     search_confirm_phase_started_at = None
                     search_confirm_retries = 0
+                    search_menu_return_started_at = time.monotonic()
+                    unknown_grace_until = (
+                        time.monotonic() + self._search_menu_return_grace_seconds()
+                    )
+                elif (
+                    screen is ScreenName.S4_LOT_SOLD
+                    and decision.actions == ("esc", "esc")
+                ):
+                    machine.awaiting_purchase_result = False
+                    search_phase_started_at = None
+                    lot_open_phase_started_at = None
+                    buyout_confirm_phase_started_at = None
+                    purchase_result_started_at = None
+                    loader_started_at = None
                     search_menu_return_started_at = time.monotonic()
                     unknown_grace_until = (
                         time.monotonic() + self._search_menu_return_grace_seconds()

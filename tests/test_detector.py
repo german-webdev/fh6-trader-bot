@@ -144,6 +144,19 @@ class DetectorTests(unittest.TestCase):
             self.detector._screen_threshold(ScreenName.S3C_LIST_SOLD),
         )
 
+    def test_runtime_sold_lot_details_frame_recovers_to_search(self) -> None:
+        screenshots_root = Path(r"C:\Users\musiq\OneDrive")
+        screenshot_path = next(
+            path for path in screenshots_root.rglob("*.png") if "032031" in path.name
+        )
+        detection = self._detect(screenshot_path)
+
+        self.assertEqual(detection.screen, ScreenName.S4_LOT_SOLD)
+        self.assertGreaterEqual(
+            detection.scores[ScreenName.S4_LOT_SOLD.value],
+            self.detector._screen_threshold(ScreenName.S4_LOT_SOLD),
+        )
+
     def test_reference_lot_loading_frame_detects_expected_screen(self) -> None:
         detection = self._detect(self.reference_dir / "4a. Загрузка описания аукциона.png")
         self.assertEqual(detection.screen, ScreenName.S4_LOT_LOADING)

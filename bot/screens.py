@@ -12,6 +12,7 @@ class ScreenName(str, Enum):
     S3C_LIST_SOLD = "s3c_list_sold"
     S4_LOT_LOADING = "s4_lot_loading"
     S4_LOT_DETAILS = "s4_lot_details"
+    S4_LOT_SOLD = "s4_lot_sold"
     S5_BUY_CONFIRM = "s5_buy_confirm"
     S6_LOADER = "s6_loader"
     S7_BUY_SUCCESS = "s7_buy_success"

@@ -35,6 +35,7 @@ class AuctionStateMachine:
             ScreenName.S6_LOADER,
             ScreenName.S7_BUY_SUCCESS,
             ScreenName.S8_FINAL_SUCCESS,
+            ScreenName.S4_LOT_SOLD,
             ScreenName.S3B_LIST_EMPTY,
             ScreenName.S3C_LIST_SOLD,
             ScreenName.UNKNOWN,
@@ -127,6 +128,15 @@ class AuctionStateMachine:
                 status="advance",
                 message="Lot details detected, selecting buyout.",
                 actions=("down", "wait_buyout_selection", "enter"),
+            )
+
+        if screen is ScreenName.S4_LOT_SOLD:
+            self.awaiting_purchase_result = False
+            self.previous_screen = screen
+            return StepDecision(
+                status="recover",
+                message="Sold lot details detected, returning to search menu.",
+                actions=("esc", "esc"),
             )
 
         if screen is ScreenName.S5_BUY_CONFIRM:

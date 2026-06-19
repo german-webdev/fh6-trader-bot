@@ -549,6 +549,8 @@ class ScreenDetector:
     def _screen_threshold(self, screen: ScreenName) -> float:
         if screen is ScreenName.S3_LIST_LOADING:
             return 0.86
+        if screen is ScreenName.S4_LOT_SOLD:
+            return 0.60
         if screen is ScreenName.S3C_LIST_SOLD:
             return 0.56
         if screen is ScreenName.S4_LOT_LOADING:
@@ -795,6 +797,46 @@ class ScreenDetector:
             + (lime_score * 0.20)
         )
 
+    def _score_lot_sold_detail(self, image: np.ndarray) -> float:
+        status_crop = _crop_region(image, (0.165, 0.680, 0.285, 0.755))
+        full_left_crop = _crop_region(image, (0.030, 0.120, 0.290, 0.760))
+
+        status_hsv = cv2.cvtColor(status_crop, cv2.COLOR_BGR2HSV)
+        status_gray = cv2.cvtColor(status_crop, cv2.COLOR_BGR2GRAY)
+        full_left_gray = cv2.cvtColor(full_left_crop, cv2.COLOR_BGR2GRAY)
+
+        green_mask = cv2.inRange(
+            status_hsv,
+            np.array([42, 70, 80], dtype=np.uint8),
+            np.array([85, 255, 255], dtype=np.uint8),
+        )
+        _threshold, white_mask = cv2.threshold(
+            status_gray,
+            190,
+            255,
+            cv2.THRESH_BINARY,
+        )
+        _threshold, dark_mask = cv2.threshold(
+            full_left_gray,
+            80,
+            255,
+            cv2.THRESH_BINARY_INV,
+        )
+
+        green_ratio = np.count_nonzero(green_mask) / max(1, green_mask.size)
+        white_ratio = np.count_nonzero(white_mask) / max(1, white_mask.size)
+        dark_ratio = np.count_nonzero(dark_mask) / max(1, dark_mask.size)
+
+        green_score = min(1.0, green_ratio / 0.28)
+        white_score = min(1.0, white_ratio / 0.11)
+        panel_score = min(1.0, dark_ratio / 0.55)
+
+        return float(
+            (green_score * 0.45)
+            + (white_score * 0.35)
+            + (panel_score * 0.20)
+        )
+
     def _score_empty_auction_message(self, image: np.ndarray) -> float:
         search_crop = _crop_region(image, (0.550, 0.460, 0.910, 0.620))
         gray = cv2.cvtColor(search_crop, cv2.COLOR_BGR2GRAY)
@@ -897,6 +939,36 @@ class ScreenDetector:
                     margin=max(
                         self.config.detector.min_margin,
                         float(list_loading_score - best_other_score),
+                    ),
+                    scores=profile_scores,
+                )
+
+        should_score_lot_sold = (
+            candidate_set is None or ScreenName.S4_LOT_SOLD in candidate_set
+        )
+        if should_score_lot_sold:
+            lot_sold_score = self._score_lot_sold_detail(image_bgr)
+            profile_scores[ScreenName.S4_LOT_SOLD.value] = lot_sold_score
+            profile_matches[ScreenName.S4_LOT_SOLD.value] = (
+                lot_sold_score >= self._screen_threshold(ScreenName.S4_LOT_SOLD)
+            )
+
+            if lot_sold_score >= self._screen_threshold(ScreenName.S4_LOT_SOLD):
+                best_other_score = max(
+                    (
+                        score
+                        for screen, score in profile_scores.items()
+                        if screen != ScreenName.S4_LOT_SOLD.value
+                    ),
+                    default=0.0,
+                )
+                return DetectionResult(
+                    screen=ScreenName.S4_LOT_SOLD,
+                    score=float(lot_sold_score),
+                    threshold=self._screen_threshold(ScreenName.S4_LOT_SOLD),
+                    margin=max(
+                        self.config.detector.min_margin,
+                        float(lot_sold_score - best_other_score),
                     ),
                     scores=profile_scores,
                 )
