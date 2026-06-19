@@ -92,6 +92,9 @@ class BotRuntime:
     def _lot_open_phase_grace_seconds(self) -> float:
         return 1.2
 
+    def _lot_details_min_ready_seconds(self) -> float:
+        return 0.85
+
     def _buyout_confirm_phase_grace_seconds(self) -> float:
         return 1.2
 
@@ -545,6 +548,14 @@ class BotRuntime:
                         and (candidate_score - s4_score) <= 0.05
                     ):
                         screen = ScreenName.S4_LOT_DETAILS
+
+            if (
+                screen is ScreenName.S4_LOT_DETAILS
+                and lot_open_phase_started_at is not None
+                and (time.monotonic() - lot_open_phase_started_at)
+                < self._lot_details_min_ready_seconds()
+            ):
+                screen = ScreenName.S4_LOT_LOADING
 
             if screen in {
                 ScreenName.S4_LOT_DETAILS,
