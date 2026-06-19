@@ -901,7 +901,10 @@ class BotRuntime:
                     unknown_grace_until = (
                         lot_open_phase_started_at + self._lot_open_phase_grace_seconds()
                     )
-                elif screen is ScreenName.S4_LOT_DETAILS and decision.actions == ("down", "enter"):
+                elif (
+                    screen is ScreenName.S4_LOT_DETAILS
+                    and decision.actions == ("down", "wait_buyout_selection", "enter")
+                ):
                     buyout_confirm_phase_started_at = time.monotonic()
                     buyout_confirm_fallback_used = False
                     unknown_grace_until = (
@@ -1027,6 +1030,9 @@ class BotRuntime:
                 continue
             if action == "down":
                 self.input.press_down()
+                continue
+            if action == "wait_buyout_selection":
+                time.sleep(self.config.timings.buyout_selection_wait_ms / 1000.0)
                 continue
             raise ValueError(f"Unsupported action: {action}")
 

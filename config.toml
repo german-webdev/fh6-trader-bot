@@ -13,6 +13,7 @@ stop_hotkey = "f8"
 after_enter_ms = 120
 after_esc_ms = 120
 after_down_ms = 120
+buyout_selection_wait_ms = 300
 detect_interval_ms = 75
 search_timeout_ms = 4000
 purchase_timeout_ms = 5000

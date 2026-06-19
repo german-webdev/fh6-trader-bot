@@ -118,8 +118,8 @@ class AuctionStateMachine:
             self.previous_screen = screen
             return StepDecision(
                 status="advance",
-                message="Lot details detected, moving to buyout.",
-                actions=("down", "enter"),
+                message="Lot details detected, selecting buyout.",
+                actions=("down", "wait_buyout_selection", "enter"),
             )
 
         if screen is ScreenName.S5_BUY_CONFIRM:

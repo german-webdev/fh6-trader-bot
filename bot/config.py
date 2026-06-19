@@ -25,6 +25,7 @@ class TimingConfig:
     after_enter_ms: int
     after_esc_ms: int
     after_down_ms: int
+    buyout_selection_wait_ms: int
     detect_interval_ms: int
     search_timeout_ms: int
     purchase_timeout_ms: int

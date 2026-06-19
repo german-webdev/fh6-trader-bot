@@ -15,7 +15,10 @@ class StateMachineTests(unittest.TestCase):
     def test_lot_details_moves_to_buyout(self) -> None:
         machine = AuctionStateMachine()
         decision = machine.handle(ScreenName.S4_LOT_DETAILS)
-        self.assertEqual(decision.actions, ("down", "enter"))
+        self.assertEqual(
+            decision.actions,
+            ("down", "wait_buyout_selection", "enter"),
+        )
 
     def test_sold_lot_returns_to_search(self) -> None:
         machine = AuctionStateMachine(fast_restart_search=True)
