@@ -549,6 +549,8 @@ class ScreenDetector:
     def _screen_threshold(self, screen: ScreenName) -> float:
         if screen is ScreenName.S3_LIST_LOADING:
             return 0.86
+        if screen is ScreenName.S3B_LIST_EMPTY:
+            return 0.68
         if screen is ScreenName.S4_LOT_SOLD:
             return 0.60
         if screen is ScreenName.S3C_LIST_SOLD:
@@ -916,46 +918,55 @@ class ScreenDetector:
         )
 
     def _score_empty_auction_message(self, image: np.ndarray) -> float:
+        def score_text_crop(search_crop: np.ndarray) -> float:
+            gray = cv2.cvtColor(search_crop, cv2.COLOR_BGR2GRAY)
+            _threshold, white_mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+            kernel = np.ones((3, 3), dtype=np.uint8)
+            white_mask = cv2.morphologyEx(white_mask, cv2.MORPH_OPEN, kernel)
+
+            white_ratio = np.count_nonzero(white_mask) / max(1, white_mask.size)
+            contours, _hierarchy = cv2.findContours(
+                white_mask,
+                cv2.RETR_EXTERNAL,
+                cv2.CHAIN_APPROX_SIMPLE,
+            )
+
+            character_boxes: list[tuple[int, int, int, int]] = []
+            for contour in contours:
+                x, y, width, height = cv2.boundingRect(contour)
+                area = cv2.contourArea(contour)
+                if area > 20 and 3 < width < 120 and 8 < height < 120:
+                    character_boxes.append((x, y, width, height))
+
+            if not character_boxes:
+                return 0.0
+
+            centers_y = [
+                y + (height / 2.0) for _x, y, _width, height in character_boxes
+            ]
+            line_histogram = np.histogram(
+                centers_y,
+                bins=8,
+                range=(0, search_crop.shape[0]),
+            )[0]
+            text_lines = sum(1 for value in line_histogram if value >= 4)
+
+            white_score = min(1.0, white_ratio / 0.08)
+            character_score = min(1.0, len(character_boxes) / 25.0)
+            line_score = 1.0 if text_lines >= 2 else 0.0
+
+            return float(
+                (white_score * 0.45)
+                + (character_score * 0.35)
+                + (line_score * 0.20)
+            )
+
         search_crop = _crop_region(image, (0.550, 0.460, 0.910, 0.620))
-        gray = cv2.cvtColor(search_crop, cv2.COLOR_BGR2GRAY)
-        _threshold, white_mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
-        kernel = np.ones((3, 3), dtype=np.uint8)
-        white_mask = cv2.morphologyEx(white_mask, cv2.MORPH_OPEN, kernel)
-
-        white_ratio = np.count_nonzero(white_mask) / max(1, white_mask.size)
-        contours, _hierarchy = cv2.findContours(
-            white_mask,
-            cv2.RETR_EXTERNAL,
-            cv2.CHAIN_APPROX_SIMPLE,
-        )
-
-        character_boxes: list[tuple[int, int, int, int]] = []
-        for contour in contours:
-            x, y, width, height = cv2.boundingRect(contour)
-            area = cv2.contourArea(contour)
-            if area > 20 and 3 < width < 90 and 8 < height < 90:
-                character_boxes.append((x, y, width, height))
-
-        if not character_boxes:
-            return 0.0
-
-        centers_y = [y + (height / 2.0) for _x, y, _width, height in character_boxes]
-        line_histogram = np.histogram(
-            centers_y,
-            bins=8,
-            range=(0, search_crop.shape[0]),
-        )[0]
-        text_lines = sum(1 for value in line_histogram if value >= 4)
-
-        white_score = min(1.0, white_ratio / 0.08)
-        character_score = min(1.0, len(character_boxes) / 25.0)
-        line_score = 1.0 if text_lines >= 2 else 0.0
-
-        return float(
-            (white_score * 0.45)
-            + (character_score * 0.35)
-            + (line_score * 0.20)
-        )
+        best_score = score_text_crop(search_crop)
+        image_height, image_width = image.shape[:2]
+        if image_width / max(1, image_height) >= 3.2:
+            best_score = max(best_score, score_text_crop(image))
+        return best_score
 
     def detect(
         self,
@@ -1110,6 +1121,35 @@ class ScreenDetector:
                         ),
                         scores=profile_scores,
                     )
+
+        s3b_score = profile_scores.get(ScreenName.S3B_LIST_EMPTY.value, 0.0)
+        s3a_score = profile_scores.get(ScreenName.S3A_LIST_PRESENT.value, 0.0)
+        s7_score = profile_scores.get(ScreenName.S7_BUY_SUCCESS.value, 0.0)
+        s8_score = profile_scores.get(ScreenName.S8_FINAL_SUCCESS.value, 0.0)
+        if (
+            s3b_score >= self._screen_threshold(ScreenName.S3B_LIST_EMPTY)
+            and s3a_score < 0.72
+            and s7_score < 0.90
+            and s8_score < 0.82
+        ):
+            best_other_score = max(
+                (
+                    score
+                    for screen, score in profile_scores.items()
+                    if screen != ScreenName.S3B_LIST_EMPTY.value
+                ),
+                default=0.0,
+            )
+            return DetectionResult(
+                screen=ScreenName.S3B_LIST_EMPTY,
+                score=float(s3b_score),
+                threshold=self._screen_threshold(ScreenName.S3B_LIST_EMPTY),
+                margin=max(
+                    self.config.detector.min_margin,
+                    float(s3b_score - best_other_score),
+                ),
+                scores=profile_scores,
+            )
 
         if not profile_scores:
             return DetectionResult(

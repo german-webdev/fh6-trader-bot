@@ -105,6 +105,19 @@ class DetectorTests(unittest.TestCase):
         self.assertLess(s3a_score, 0.72)
         self.assertLess(s7_score, 0.90)
 
+    def test_empty_list_message_crop_detects_s3b(self) -> None:
+        screenshots_root = Path(r"C:\Users\musiq\OneDrive")
+        screenshot_path = next(
+            path for path in screenshots_root.rglob("*.png") if "011701" in path.name
+        )
+        detection = self._detect(screenshot_path)
+
+        self.assertEqual(detection.screen, ScreenName.S3B_LIST_EMPTY)
+        self.assertGreaterEqual(
+            detection.scores[ScreenName.S3B_LIST_EMPTY.value],
+            self.detector._screen_threshold(ScreenName.S3B_LIST_EMPTY),
+        )
+
     def test_runtime_list_loading_frame_waits_for_lots(self) -> None:
         screenshots_root = Path(r"C:\Users\musiq\OneDrive")
         screenshot_path = next(

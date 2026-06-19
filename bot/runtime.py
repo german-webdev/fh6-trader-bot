@@ -509,10 +509,10 @@ class BotRuntime:
                 ):
                     screen = ScreenName.S3_LIST_LOADING
                 elif (
-                    search_phase_elapsed >= 0.18
-                    and s3b_score >= 0.74
+                    s3b_score
+                    >= self.detector._screen_threshold(ScreenName.S3B_LIST_EMPTY)
                     and s3a_score < 0.72
-                    and (candidate_score - s3b_score) <= 0.16
+                    and s7_score < 0.90
                 ):
                     screen = ScreenName.S3B_LIST_EMPTY
                 elif search_phase_elapsed >= 0.35:
